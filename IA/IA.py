@@ -302,7 +302,6 @@ class Parameters:
     def set_angle_value(self, angle):
         self.angle = float(angle) / 180 * math.pi
 
-# 和下面的get edge 一起找到单一threshold 下的边界
     def set_threshold_list(self, height, width, data, r=True):
         self.threshold_list_x = []
         self.threshold_list_y = []

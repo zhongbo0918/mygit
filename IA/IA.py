@@ -284,7 +284,6 @@ class Parameters:
         self.v_grid = []
         self.h_grid = []
 
-# 如果ready 就可以在 pyplot 的地方画图了
     def is_ready(self):
         return self.left and self.right and self.top and self.bottom and self.threshold
 

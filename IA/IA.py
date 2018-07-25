@@ -288,7 +288,6 @@ class Parameters:
     def is_ready(self):
         return self.left and self.right and self.top and self.bottom and self.threshold
 
-### 1. 把 parameter 里的 drag box 的 boundary values 赋值
     def set_boundary_values(self, left, right, top, bottom):
         if left and right and top and bottom:
             self.left = round(float(left))
@@ -301,7 +300,6 @@ class Parameters:
             self.top = None
             self.bottom = None
 
-### 1. 把paramter 里的 dragbox 的角度赋值 （角度变弧度）
     def set_angle_value(self, angle):
         self.angle = float(angle) / 180 * math.pi
 

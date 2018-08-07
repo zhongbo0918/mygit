@@ -1,6 +1,12 @@
+# When I wrote this, only God and I understood what I was doing.
+# Now, God only knows.
+# Good luck.
+
+
 from __future__ import print_function
 from tkinter import filedialog
 from tkinter import *
+from tkinter import ttk
 
 from PIL import Image, ImageDraw
 
@@ -12,6 +18,7 @@ import csv
 import warnings
 
 import matplotlib
+
 matplotlib.use('TkAgg')
 matplotlib.rcParams['toolbar'] = 'toolmanager'
 import matplotlib.pyplot as plt
@@ -19,27 +26,34 @@ from matplotlib.backend_tools import ToolZoom
 
 warnings.filterwarnings("ignore")
 
-
 LEFT = "Left"
 RIGHT = "Right"
 TOP = "Top"
 BOTTOM = "Bottom"
 
 
+def get_average(l):
+    if len(l) == 0:
+        print('Fail to grid, check the griding parameters')
+        return -1, -1
+    elif len(l) == 1:
+        return l[0], 0
+    else:
+        return statistics.mean(l), statistics.stdev(l)
+
+
 def min_position(row):
-    smallest = 255
+    position, smallest = row[0]
     for i in row:
         if i[1] < smallest:
-            smallest = i[1]
-            position = i[0]
+            position, smallest = i
     return position
 
 
-def find_2nd_derivative(x, y):
+def find_sidewall_position(x, y):
     left = 1
     position = 0
-    x_max = 0
-    y_max = 0
+    x_max, y_max = 0, 0
     max_position = 0
     cut_off = 0.85
     for i in range(len(x)):
@@ -50,22 +64,22 @@ def find_2nd_derivative(x, y):
     if y[0] > y[-1]:
         left = 0
     elif y[0] == y[-1]:
-        if (max_position-x[0]) > (x[-1]-max_position):
+        if (max_position - x[0]) > (x[-1] - max_position):
             left = 0
 
     if left == 1:
         if y[-1] >= cut_off * y_max:
             position = x[-1]
         else:
-            for i in range(x_max, len(x)-1):
-                if y[i] >= cut_off * y_max >= y[i+1]:
+            for i in range(x_max, len(x) - 1):
+                if y[i] >= cut_off * y_max >= y[i + 1]:
                     position = x[i]
     else:
         if y[0] >= cut_off * y_max:
             position = x[0]
         else:
             for i in range(0, x_max):
-                if y[i] <= cut_off * y_max <= y[i+1]:
+                if y[i] <= cut_off * y_max <= y[i + 1]:
                     position = x[i]
     return left, position
 
@@ -73,25 +87,21 @@ def find_2nd_derivative(x, y):
 def correlate(l, region):
     n, j = 0, 0
     longest = 0
-    left, right = region[0], region[1]
+    left, right = region
     for i in l:
         region_list = [i[0], i[1], left, right]
         region_list.sort()
+        length = 0
         if region_list[1] >= left and region_list[2] <= right:
-            length = region_list[2]-region_list[1]
-        else:
-            length = 0
-
+            length = region_list[2] - region_list[1]
         if length > longest:
-            longest = length
-            n = j
+            n, longest = j, length
         j = j + 1
     return n
 
 
 def get_pixels(low, high, height, width, data):
-    pixel_x = []
-    pixel_y = []
+    pixel_x, pixel_y = [], []
     for i in range(height):
         for j in range(width):
             if data[i * width + j][0] in range(low, high):
@@ -101,20 +111,16 @@ def get_pixels(low, high, height, width, data):
 
 
 def rect_boundary(t, l, b, r, a=0):
-    rect_x = []
-    rect_y = []
+    rect_x, rect_y = [], []
+
     for i in range(t, b + 1):
-        left = l + int(round(math.tan(a) * (i - t)))
-        right = r + int(round(math.tan(a) * (i - t)))
-        rect_x.append(left)
-        rect_y.append(i)
-        rect_x.append(right)
-        rect_y.append(i)
+        for k in [l, r]:
+            rect_x.append(k + int(round(math.tan(a) * (i - t))))
+            rect_y.append(i)
     for j in range(l, r + 1):
-        rect_x.append(j)
-        rect_y.append(t)
-        rect_x.append(j + int(round((b - t) * math.tan(a))))
-        rect_y.append(b)
+        for k in [t, b]:
+            rect_x.append(j + int(round((k - t) * math.tan(a))))
+            rect_y.append(k)
 
     return rect_x, rect_y
 
@@ -134,49 +140,22 @@ def find_white(l, white=254):
     return white_line, position
 
 
-def find_bar_region(data, w, h):
-    top = 0
-    bottom = h
-    left = 0
-    right = w
-    for i in range(880, h):
-        num = 0
-        for j in range(w):
-            stride = j + w * i
-            if data[stride][0] <= 60:
-                num += 1
-        if num > 0.95 * w:
-            top = i
-            break
-    j = w - 20
-    while j >= 0:
-        j = j - 1
-        num = 0
-        for i in range(top, bottom):
-            stride = j + w * i
-            if data[stride][0] >= 100:
-                num += 1
-        if num > 0.95 * (bottom - top):
-            left = j
-            break
-    for i in range(top + 10, h):
-        num = 0
-        for j in range(left, right):
-            stride = j + w * i
-            if data[stride][0] >= 100:
-                num += 1
-        if num > 0.95 * (right - left):
-            bottom = i
-            break
-    
-    return top, bottom, left, right
+def read_tif_image(img):
+    ratio, height = 0, 0
+    new_j = img.tag[34682][0].split('\r\n')
+    for k in new_j:
+        if 'PixelWidth' in k:
+            ratio = float(k.split('=')[1]) * 1e9
+        if 'ResolutionY' in k:
+            height = int(k.split('=')[1])
+    return ratio, height
 
 
 def line2scatter(line_x, line_y, div=1):
-    x_list = [div*int(round(i)) for i in line_x]
-    y_list = [div*int(round(i)) for i in line_y]
-    x_scatter = []
-    y_scatter = []
+    x_list = [div * int(round(i)) for i in line_x]
+    y_list = [div * int(round(i)) for i in line_y]
+    x_scatter, y_scatter = [], []
+
     for j in range(len(line_x) - 1):
         if x_list[j + 1] > x_list[j]:
             for x in range(x_list[j], x_list[j + 1]):
@@ -197,8 +176,8 @@ def line2scatter(line_x, line_y, div=1):
                 y_scatter.append(round(y))
 
     if div != 1:
-        x_scatter = [i/div for i in x_scatter]
-        y_scatter = [j/div for j in y_scatter]
+        x_scatter = [i / div for i in x_scatter]
+        y_scatter = [j / div for j in y_scatter]
     return x_scatter, y_scatter
 
 
@@ -210,9 +189,7 @@ def in_out(x, y, x_scatter, y_scatter):
                 pair[0] = y_scatter[i]
             else:
                 pair[1] = y_scatter[i]
-                if pair[0] <= y <= pair[1]:
-                    return True
-                if pair[1] <= y <= pair[0]:
+                if pair[0] <= y <= pair[1] or pair[1] <= y <= pair[0]:
                     return True
                 pair = [-1, -1]
     return False
@@ -253,6 +230,47 @@ class ModifiedZoom(ToolZoom):
         return
 
 
+class OutputData:
+    def __init__(self):
+        self._matrix = []
+        self.height = 0
+        self.width = 0
+        self.row = []
+        self.column = []
+        self.mean = 0
+        self.sd = 0
+
+    def set_matrix(self, matrix, height, width):
+        self._matrix = matrix
+        self.height = height
+        self.width = width
+
+    def get_matrix(self):
+        return self._matrix
+
+    def data_analysis(self):
+        self.row = [get_average(self._matrix[i])[0] for i in range(self.height)]
+        self.column = [get_average([self._matrix[i][j] for i in range(self.height)])[0] for j in range(self.width)]
+        self.mean, self.sd = get_average(self.row)
+
+
+class ImageData:
+    def __init__(self):
+        self.thickness = OutputData()
+        self.void = OutputData()
+        self.sidewall = OutputData()
+        self.roughness = OutputData()
+        self.wl_height = OutputData()
+        self.wl_mid = OutputData()
+
+        self.whole_sidewall = 0
+        self.whole_roughness = 0
+
+    def table_content(self, s):
+        name_dict = {'Thickness': self.thickness, 'Void%': self.void, 'WL Height': self.wl_height}
+        return name_dict[s].column, name_dict[s].row, name_dict[s].get_matrix(), name_dict[s].mean
+
+
 class Parameters:
     def __init__(self):
         self.left = None
@@ -263,6 +281,7 @@ class Parameters:
         self.field_position = 0
         self.discontinuity = 0
         self.noise_level = 2
+        self.bottom_cut = 0
 
         self.threshold = 0
         self.threshold_list_x = []
@@ -307,7 +326,6 @@ class Parameters:
         self.threshold_list_y = []
         self.threshold_list_x, self.threshold_list_y = self.get_edge(self.threshold, height, width, data, region=r)
 
-### 根据threshold 找边界 并返回一个边界的list 用于作图。 region确定是不是找整张图的边界，还是zoom in之后的边界。
     def get_edge(self, threshold, height, width, data, region=True):
         assert height
         assert width
@@ -336,28 +354,23 @@ class Parameters:
                             threshold_y.append(j)
         return threshold_x, threshold_y
 
-# 给 threshold 赋值
     def set_threshold_value(self, threshold):
         self.threshold = threshold
 
-# 给第二threshold 赋值 （其实这个也可以找到除了黑白以外第三个颜色）
     def set_gray_threshold_list(self, height, width, data):
         self.gray_threshold_list_x = []
         self.gray_threshold_list_y = []
         self.gray_threshold_list_x, self.gray_threshold_list_y = \
             self.get_edge(self.gray_threshold, height, width, data)
 
-# 给gray threshold 赋值。
     def set_gray_threshold_value(self, gray_threshold):
         self.gray_threshold = gray_threshold
 
-# 把灰色的区域找出来染色。
     def set_pixels(self, height, width, data):
         self.black_x, self.black_y = get_pixels(0, self.threshold + 1, height, width, data)
         self.gray_x, self.gray_y = get_pixels(self.threshold + 1, self.gray_threshold + 1, height, width, data)
         self.white_x, self.white_y = get_pixels(self.gray_threshold + 1, 256, height, width, data)
 
-# 看看某个list是不是都是白的。好像跟外面的静态函数重复了....
     def all_white(self, l, start, end, direction=1, white=0):
         if not white:
             assert isinstance(self.grid_parameter, int)
@@ -375,7 +388,7 @@ class Parameters:
 
     def image_grid(self, height, width, data):
 
-        grid_const_1 = 0
+        grid_const_1 = self.bottom_cut
         grid_const_2 = 10
         grid_const_3 = 15
 
@@ -385,10 +398,12 @@ class Parameters:
 
         for i in range(width):
             vertical_list = [data[i + width * j] for j in range(height)]
-            if not self.all_white(vertical_list, self.field_position, len(vertical_list) - grid_const_1, direction=0) and v_grid[0] == -1:
+            if not self.all_white(vertical_list, self.field_position, len(vertical_list) - grid_const_1,
+                                  direction=0) and v_grid[0] == -1:
                 v_grid[0] = i
                 v_grid[1] = 1
-            if self.all_white(vertical_list, self.field_position, len(vertical_list) - grid_const_1, direction=0) and v_grid[1] == 1:
+            if self.all_white(vertical_list, self.field_position, len(vertical_list) - grid_const_1, direction=0) and \
+                    v_grid[1] == 1:
                 v_grid[1] = i
                 if v_grid[1] - v_grid[0] > grid_const_2:
                     im_v_grid.append(v_grid)
@@ -450,7 +465,7 @@ class Parameters:
     def special_grid(self, region, width, height, data):
         mid = 0
         if region:
-            mid = round((region[0]+region[1]) / 2)
+            mid = round((region[0] + region[1]) / 2)
         if self.left_right(mid, region, width, height, data):
             region = [mid, region[1]]
         else:
@@ -458,7 +473,7 @@ class Parameters:
         return self.grid(width, height, region, data)
 
     def left_right(self, mid, region, width, height, data):
-        column = [(j, data[j*width+mid][0]) for j in range(height)]
+        column = [(j, data[j * width + mid][0]) for j in range(height)]
         white_range = [-2, -1]
         white_list = []
         longest = 0
@@ -474,33 +489,16 @@ class Parameters:
                 white_range = [-1, -1]
 
         for i in white_list:
-            if i[1]-i[0] > longest:
+            if i[1] - i[0] > longest:
                 longest = i[1] - i[0]
                 position = i
-        middle = int(round((position[0]+position[1])/2))
+        middle = int(round((position[0] + position[1]) / 2))
 
-        row = [(i, data[middle*width+i][0]) for i in range(*region)]
+        row = [(i, data[middle * width + i][0]) for i in range(*region)]
         if min_position(row) < mid:
             return True
         else:
             return False
-
-        # longest = 0
-        # position = 0
-        # x_list, y_list = [], []
-        # for i in range(*region):
-        #     black = 0
-        #     for j in range(height):
-        #         if data[j * width + i][0] <= self.grid_parameter:
-        #             black += 1
-        #     x_list.append(i)
-        #     y_list.append(black)
-        #     if black > longest:
-        #         longest = black
-        #         position = i
-        # if position > mid:
-        #     return False
-        # return True
 
     def grid(self, width, height, region, data):
         grid_const_3 = 15
@@ -511,14 +509,14 @@ class Parameters:
         n = 0
         for k in self.v_grid:
             for l in range(2):
-                line_x = [k[l]]*height
+                line_x = [k[l]] * height
                 line_y = [i for i in range(height)]
                 self.grid_line_list.append([line_x, line_y])
 
             for m in self.h_grid[n]:
                 for l in range(2):
                     line_x = [i for i in range(k[0], k[1])]
-                    line_y = [m[l]] * (k[1]-k[0])
+                    line_y = [m[l]] * (k[1] - k[0])
                     self.grid_line_list.append([line_x, line_y])
             n += 1
 
@@ -545,31 +543,14 @@ class TEMImage:
         self.scale_y = []
         self.ratio = 0.2
 
-        self.section_list = []
+        self.row_list = []
         self.column_list = []
-        self.thickness_matrix = []
         self.black_pixels = []
-        self.thickness_list = []
-        self.thickness_column = []
-        self.thickness = 0
-        self.standard_deviation = 0
-
         self.white_pixels = []
-        self.void_list = []
-        self.void_column = []
-        self.void_matrix = []
-        self.void_percentage = 0
-        self.void_sd = 0
+        self.wl_mid_position = 0
+        self.sw_row_list = []
 
-        self.vp_sd = 0
-
-        self.sidewall = 0
-        self.roughness = 0
-        self.sw_list = []
-        self.sw_rough_list = []
-        self.sw_thick_list = []
-        self.sw_vertical = []
-        self.sw_section_list = []
+        self.output = ImageData()
 
         self.void_xs_list = []
         self.void_ys_list = []
@@ -577,73 +558,53 @@ class TEMImage:
 
     def open_file(self, file_path):
         assert os.path.exists(file_path)
-        self.image = Image.open(file_path).convert("RGB")
+        self.filename = os.path.split(file_path)[1]
+        image = Image.open(file_path)
+
+        scale_dict = {'-a': 1000, '-b': 200, '-c': 50}
+        for key in scale_dict.keys():
+            if key in self.filename:
+                self.scale_bar = scale_dict[key]
+                break
+
+        if 'OUTS' in self.filename:
+            self.image_type = 'TEM'
+        if 'OUTS' not in self.filename:
+            self.image_type = 'STEM'
+            ratio, height = read_tif_image(image)
+
+        self.image = image.convert("RGB")
         self.width, self.height = self.image.size
         self.data_tuple = self.image.getdata()
         self.data = [i for i in self.data_tuple]
         self.original_data = self.data
-        file_name = os.path.split(file_path)[1]
-        self.filename = file_name
-        if 'OUTS' in file_name:
-            self.image_type = 'TEM'
-        if 'OUTS' not in file_name:
-            self.image_type = 'STEM'
 
-        scale_dict = {'-a': 1000, '-b': 200, '-c': 50, '20K': 2000, '20k': 2000, '80K': 500, '80k': 500, '250K': 200,
-                      '250k': 200}
-        for key in scale_dict.keys():
-            if key in file_name:
-                self.scale_bar = scale_dict[key]
-                break
-        self.convert_ratio()
+        if self.image_type == 'TEM':
+            self.convert_ratio()
+        if self.image_type == 'STEM':
+            self.scale_bar = 'N/A'
+            self.ratio, self.height = ratio, height
+
         self.void_xs_list = []
         self.void_ys_list = []
 
     def convert_ratio(self):
-        if self.image_type == 'TEM':
-            y = 0
-            length = 0
-            index = ()
-            for j in range(self.height - 100, self.height):
-                line = [self.data[j * self.width + i][0] for i in range(400)]
-                length, index = find_white(line)
-                if length > 50:
-                    y = j
-                    break
-            self.scale_x = [i for i in range(*index)]
-            self.scale_y = [y + 10 for i in range(*index)]
-            try:
-                self.length = length
-                self.ratio = self.scale_bar / length
-            except ZeroDivisionError as e:
-                print('Scale bar error', e)
-        if self.image_type == 'STEM':
-            start, end = 0, 0
-            t, b, l, r = find_bar_region(self.data, self.width, self.height)
-
-            m = round(0.5 * t + 0.5 * b)
-            for j in range(l + 3, r - 3):
-                stride = j + m * self.width
-                if self.data[stride][0] >= 250:
-                    start = j
-                    break
-            for j in range(l + 3, r - 3):
-                stride = j + m * self.width
-                if self.data[stride][0] >= 250:
-                    end = j
-            self.scale_x = [i for i in range(start, end)]
-            self.scale_y = [m + 10 for i in range(start, end)]
-            try:
-                self.length = end - start
-                self.ratio = self.scale_bar / self.length
-            except ZeroDivisionError as e:
-                print('Scale bar error', e)
-            finally:
-                self.ratio = 1
-                self.length = 200
-
-            self.height = t
-
+        y = 0
+        length = 0
+        index = ()
+        for j in range(self.height - 100, self.height):
+            line = [self.data[j * self.width + i][0] for i in range(400)]
+            length, index = find_white(line)
+            if length > 50:
+                y = j
+                break
+        self.scale_x = [i for i in range(*index)]
+        self.scale_y = [y + 10 for i in range(*index)]
+        try:
+            self.length = length
+            self.ratio = self.scale_bar / length
+        except ZeroDivisionError as e:
+            print('Scale bar error', e)
         return
 
     def update_ratio(self, new_bar):
@@ -658,12 +619,7 @@ class TEMImage:
         self.im_h_grid = parameters.h_grid
         self.grid_list = parameters.grid_line_list
 
-    def all_white(self, row, white):
-        for i in row:
-            if i < white:
-                return False
-        return True
-
+    # Find black pixels in certain region and return a list/lists.
     def pixels(self, region, parameters, position=False):
         l, r, t, b = region
         pixels_list = []
@@ -681,21 +637,21 @@ class TEMImage:
             return x_list, y_list
         return pixels_list
 
-##### 5(c) 计算sidewall roughness。 roughness的定义是standard deviation。 之后有可能会改。
-    # 也可以算水平区域的厚度和roughness
     def calculate_sidewall(self, parameters, horizontal):
         l, r, t, b, a = parameters.left, parameters.right, parameters.top, parameters.bottom, parameters.angle
 
-        self.sw_list = []
-        if horizontal == 0:
+        sw_list = []
+        if not horizontal:
             plot_list_x, plot_list_y = self.pixels((l, r, t, b), parameters, position=True)
-            l_r, position = find_2nd_derivative(plot_list_x, plot_list_y)
+            l_r, position = find_sidewall_position(plot_list_x, plot_list_y)
             if l_r == 1:
                 r = position
-                self.sd_position = ([int(round(r + (i - t) * math.tan(a))) for i in range(t, b)], [i for i in range(t, b)])
+                self.sd_position = \
+                    ([int(round(r + (i - t) * math.tan(a))) for i in range(t, b)], [i for i in range(t, b)])
             else:
                 l = position
-                self.sd_position = ([int(round(l + (i - t) * math.tan(a))) for i in range(t, b)], [i for i in range(t, b)])
+                self.sd_position = (
+                [int(round(l + (i - t) * math.tan(a))) for i in range(t, b)], [i for i in range(t, b)])
 
             for i in range(t, b):
                 black = 0
@@ -706,25 +662,24 @@ class TEMImage:
                     if self.data[stride][0] < parameters.threshold:
                         black += 1
                 if black:
-                    self.sw_list.append(black * math.cos(parameters.angle) * self.ratio)
+                    sw_list.append(black * math.cos(parameters.angle) * self.ratio)
         else:
-            self.sw_list = self.pixels((l, r, t, b), parameters)
+            sw_list = self.pixels((l, r, t, b), parameters)
+        self.output.whole_sidewall, self.output.whole_roughness = get_average(sw_list)
 
-        self.sidewall = statistics.mean(self.sw_list)
-        self.roughness = statistics.stdev(self.sw_list)
-
-##### 5(c) 从image griding 继承来 sidewall的griding。 基本算法就是反选所有的wordline regio。
     def calculate_sidewall_section(self, parameters):
-        self.sw_rough_list = []
-        self.sw_thick_list = []
-        self.sw_section_list = []
+        rough_list = []
+        thick_list = []
+        self.sw_row_list = []
+
         l, r, t, b, a = parameters.left, parameters.right, parameters.top, parameters.bottom, parameters.angle
-        sidewall_list = []
+
         n = correlate(self.im_v_grid, (parameters.left, parameters.right))
         for i in range(len(self.im_h_grid[n]) - 1):
             if self.im_h_grid[n][i][1] >= parameters.top and self.im_h_grid[n][i + 1][0] <= parameters.bottom:
-                sidewall_list.append([self.im_h_grid[n][i][1], self.im_h_grid[n][i + 1][0]])
-        for k in sidewall_list:
+                self.sw_row_list.append([self.im_h_grid[n][i][1], self.im_h_grid[n][i + 1][0]])
+
+        for k in self.sw_row_list:
             sw_black_list = []
             for i in range(*k):
                 black = 0
@@ -737,16 +692,15 @@ class TEMImage:
                 sw_black_list.append(black * math.cos(parameters.angle) * self.ratio)
             thickness = statistics.mean(sw_black_list)
             roughness = statistics.stdev(sw_black_list)
-            self.sw_thick_list.append(thickness)
-            self.sw_rough_list.append(roughness)
-            self.sw_vertical.append([thickness, roughness])
-        self.sw_section_list = sidewall_list
+            thick_list.append([thickness])
+            rough_list.append([roughness])
 
-##### 5(a)（b) 请求计算厚度和void if void==true。 优先判断是不是有draw过region。如果有，把region涂白当作void。
-### 从image grid继承来section list
-### 把分析区域自动分成十个 column list
-### 计算，还原涂白的数据。
-    def calculate_thickness(self, parameters, voids=False):
+        self.output.sidewall.set_matrix(thick_list, len(thick_list), 1)
+        self.output.sidewall.data_analysis()
+        self.output.roughness.set_matrix(rough_list, len(rough_list), 1)
+        self.output.roughness.data_analysis()
+
+    def calculate_thickness(self, parameters, voids=False, wl_height=False):
         assert isinstance(parameters, Parameters)
         assert parameters.left
         assert parameters.right
@@ -755,9 +709,9 @@ class TEMImage:
         assert parameters.threshold
 
         self.draw_judgement(parameters)
-        self.get_section_list(parameters)
+        self.get_row_list(parameters)
         self.get_column_list(parameters)
-        self.calculate(parameters, void=voids)
+        self.calculate(parameters, void=voids, word_line=wl_height)
         self.data = self.original_data
 
     def draw_judgement(self, parameters):
@@ -766,108 +720,106 @@ class TEMImage:
                 for j in range(parameters.left, parameters.right):
                     for v in range(len(self.void_xs_list)):
                         if in_out(j, i, self.void_xs_list[v], self.void_ys_list[v]):
-                            self.data[j+i*self.width] = (230, 230, 230)
+                            self.data[j + i * self.width] = (230, 230, 230)
         return
 
-    def get_section_list(self, parameters):
-        self.section_list = []
+    def get_row_list(self, parameters):
+        self.row_list = []
         n = correlate(self.im_v_grid, (parameters.left, parameters.right))
+        self.wl_mid_position = round(statistics.mean(self.im_v_grid[n]))
         for i in self.im_h_grid[n]:
             if i[0] >= parameters.top and i[1] <= parameters.bottom:
-                self.section_list.append(i)
+                self.row_list.append(i)
 
     def get_column_list(self, parameters):
         self.column_list = []
         r, l = parameters.right, parameters.left
+        if r - l > 10:
+            for j in range(l, r):
+                column = [self.data[j + i * self.width][0] for i in range(parameters.top, parameters.bottom)]
+                if max(column) < parameters.threshold:
+                    l = j
+                    break
+            for j in range(l, r):
+                column = [self.data[j + i * self.width][0] for i in range(parameters.top, parameters.bottom)]
+                if max(column) < parameters.threshold:
+                    r = j
 
-        for j in range(l, r):
-            column = [self.data[j + i * self.width][0] for i in range(parameters.top, parameters.bottom)]
-            if not self.all_white(column, parameters.threshold):
-                l = j
-                break
-        for j in range(l, r):
-            column = [self.data[j + i * self.width][0] for i in range(parameters.top, parameters.bottom)]
-            if not self.all_white(column, parameters.threshold):
-                r = j
+            parameters.right, parameters.left = r, l
+            column_width = round((r - l + 1) / 10)
+            for i in range(9):
+                self.column_list.append((l + i * column_width, l + (i + 1) * column_width))
+            self.column_list.append((l + 9 * column_width, r + 1))
+        else:
+            self.column_list = [[l, r + 1]]
 
-        parameters.right, parameters.left = r + 1, l
-        column_width = round((r - l + 1) / 10)
-        for i in range(9):
-            self.column_list.append((l + i * column_width, l + (i + 1) * column_width))
-        self.column_list.append((l + 9 * column_width, r + 1))
-        print(self.column_list)
+    def calculate(self, parameters, void=False, word_line=False):
+        self.black_pixels = [[0 for x in range(10)] for y in range(len(self.row_list))]
+        self.white_pixels = [[0 for x in range(10)] for y in range(len(self.row_list))]
+        wl_height_matrix = [[0 for x in range(10)] for y in range(len(self.row_list))]
+        thickness_matrix = [[0 for x in range(10)] for y in range(len(self.row_list))]
+        void_matrix = [[0 for x in range(10)] for y in range(len(self.row_list))]
 
-    def calculate(self, parameters, void=False):
-        self.black_pixels = [[0 for x in range(10)] for y in range(len(self.section_list))]
-        self.white_pixels = [[0 for x in range(10)] for y in range(len(self.section_list))]
-        self.thickness_matrix = [[0 for x in range(10)] for y in range(len(self.section_list))]
-        self.void_matrix = [[0 for x in range(10)] for y in range(len(self.section_list))]
-        self.thickness_list = []
-        self.thickness_column = []
-        self.void_list = []
-        self.void_column = []
-        total_length = parameters.right - parameters.left
-
-        for k in range(len(self.section_list)):
+        for k in range(len(self.row_list)):
             for c in range(len(self.column_list)):
                 black, white = 0, 0
+                wl_height = []
                 for i in range(self.column_list[c][0], self.column_list[c][1]):
                     start, end = 0, 0
-                    for j in range(self.section_list[k][0], self.section_list[k][1]):
+                    for j in range(self.row_list[k][0], self.row_list[k][1]):
                         stride = i + self.width * j
                         if self.data[stride][0] < parameters.threshold:
                             start = j
                             break
-                    for j in range(self.section_list[k][0], self.section_list[k][1]):
+                    for j in range(self.row_list[k][0], self.row_list[k][1]):
                         stride = i + self.width * j
                         if self.data[stride][0] < parameters.threshold:
                             end = j
-
-                    for j in range(start, end+1):
+                    wl_height.append(end - start)
+                    for j in range(start, end + 1):
                         stride = i + self.width * j
                         if self.data[stride][0] < parameters.threshold:
                             black += 1
                         else:
                             white += 1
 
+                wl_height_matrix[k][c] = self.ratio * get_average(wl_height)[0]
                 self.black_pixels[k][c] = black
                 self.white_pixels[k][c] = white
-                self.thickness_matrix[k][c] = (
-                        self.ratio * black / (self.column_list[c][1] - self.column_list[c][0]) / 2)
+                thickness_matrix[k][c] = (self.ratio * black / (self.column_list[c][1] - self.column_list[c][0]) / 2)
 
                 if void:
                     if white + black == 0:
                         voids = 0
                     else:
                         voids = white / (white + black)
-                    self.void_matrix[k][c] = voids
+                    void_matrix[k][c] = voids
 
-            self.thickness_list.append(self.ratio * sum(self.black_pixels[k]) / total_length / 2)
-            if void:
-                self.void_list.append(
-                    sum(self.white_pixels[k]) / (sum(self.white_pixels[k]) + sum(self.black_pixels[k])))
-
-        if not self.thickness_list:
-            print('Fail to grid, check the griding parameters')
-            return
-        if len(self.thickness_list) > 1:
-            self.thickness = statistics.mean(self.thickness_list)
-            self.standard_deviation = statistics.stdev(self.thickness_list)
-        else:
-            self.thickness = self.thickness_list[0]
-            self.standard_deviation = 0
-        self.thickness_column = [statistics.mean([self.thickness_matrix[i][j] for i in range(len(self.section_list))])
-                                 for j in range(10)]
-
+        self.output.thickness.set_matrix(thickness_matrix, len(self.row_list), len(self.column_list))
+        self.output.thickness.data_analysis()
         if void:
-            if len(self.void_list) > 1:
-                self.void_percentage = statistics.mean(self.void_list)
-                self.void_sd = statistics.stdev(self.void_list)
-            else:
-                self.void_percentage = self.void_list[0]
-                self.standard_deviation = 0
-            self.void_column = [statistics.mean([self.void_matrix[i][j] for i in range(len(self.section_list))])
-                                for j in range(10)]
+            self.output.void.set_matrix(void_matrix, len(self.row_list), len(self.column_list))
+            self.output.void.data_analysis()
+
+        if word_line:
+            self.output.wl_height.set_matrix(wl_height_matrix, len(self.row_list), len(self.column_list))
+            self.output.wl_height.data_analysis()
+            wl_mid = []
+            for k in range(len(self.row_list)):
+                start, end = 0, 0
+                i = self.wl_mid_position
+                for j in range(self.row_list[k][0], self.row_list[k][1]):
+                    stride = i + self.width * j
+                    if self.data[stride][0] < parameters.threshold:
+                        start = j
+                        break
+                for j in range(self.row_list[k][0], self.row_list[k][1]):
+                    stride = i + self.width * j
+                    if self.data[stride][0] < parameters.threshold:
+                        end = j
+                wl_mid.append([(end - start) * self.ratio])
+            self.output.wl_mid.set_matrix(wl_mid, len(self.row_list), 1)
+            self.output.wl_mid.data_analysis()
 
 
 class UI:
@@ -899,8 +851,6 @@ class UI:
                                     height=self.btm_height)
         self.table_frame = LabelFrame(self.root, text='Data', bd=0, width=self.table_width,
                                       height=self.table_height)
-        self.sw_frame = LabelFrame(self.root, text='Sidewall Anaylsis', bd=0, width=self.sw_width,
-                                   height=self.sw_height)
 
         self.threshold_ui = Entry(self.left_frame1)
         self.gray_threshold_ui = Entry(self.left_frame2)
@@ -914,9 +864,16 @@ class UI:
         self.sw_roughness_ui = Entry(self.btm_frame)
         self.boundary_ui = {}
         self.boundary_angle_ui = Entry(self.right_frame)
+        self.mean_wl_height_ui = Entry(self.btm_frame)
+        self.sd_wl_height_ui = Entry(self.btm_frame)
+        self.mean_mid_height_ui = Entry(self.btm_frame)
+        self.sd_mid_height_ui = Entry(self.btm_frame)
+
+        com_value = StringVar()
+        self.combo_list = ttk.Combobox(self.btm_frame, textvariable=com_value)
+        self.combo_list["values"] = ('Thickness', 'Void Percentage', 'WL Height', 'Sidewall', 'Field')
 
         self.var1 = IntVar()
-        self.var2 = IntVar()
         self.var3 = IntVar()
         self.var4 = IntVar()
 
@@ -929,8 +886,6 @@ class UI:
 
         self.scat = ''
 
-# 打开STEM/TEM image的对话框，打开图片。 清空列表，override pyplot toolbar。初始化图片的对话框。
-### 4. 插入convert ratio
     def open_file_ui(self):
         self.refresh()
         current_file = filedialog.askopenfilename(initialdir="C:/<whatever>", title="Select file",
@@ -949,7 +904,6 @@ class UI:
 
         self.plot()
 
-# 每次打开新图片，或者计算前初始化所有的数据。
     def refresh(self, t=True, b=True):
         table_height = len(self.output_table)
         if table_height:
@@ -975,7 +929,6 @@ class UI:
         if t:
             self.parameters.threshold = 0
 
-### 4.和下面的两个function一起， 插入和更新convert ratio
     def insert_ratio_ui(self):
         if not self.var1.get():
             self.scale_bar_ui.delete(0, 'end')
@@ -985,7 +938,8 @@ class UI:
     def update_ratio_ui(self):
         pad_x = 5
         pad_y = 2
-        self.update_ratio()
+        if self.temImage.image_type == 'TEM':
+            self.update_ratio()
         Label(self.left_frame1, text='Convert ratio: ').grid(sticky='W', row=2, column=0, padx=pad_x, pady=pad_y)
         Label(self.left_frame1, text=str('%.3f' % self.temImage.ratio)). \
             grid(sticky='W', row=2, column=1, padx=pad_x, pady=pad_y)
@@ -998,9 +952,6 @@ class UI:
             return
         self.temImage.update_ratio(update_bar)
 
-##### 1. 3. drag box 的响应函数，用于点击左键。
-    # 当var4 == 1 的时候开始draw。 当var4==0 的时候drag box。
-    # 当使用右键的时候，封闭draw 的曲线。
     def on_press(self, event):
 
         if event.button == 1:
@@ -1042,7 +993,6 @@ class UI:
                 self.left_flag = 0
                 return
 
-##### 3. delete button 用于删除draw的曲线的上一个点。 如果已经封闭了一组曲线，delete用于删除整个曲线。
     def delete_press(self, event):
         if event.key == 'delete':
             if self.var4.get() == 1 and self.left_flag == 1 and self.draw_xs:
@@ -1055,7 +1005,6 @@ class UI:
                 self.temImage.void_ys_list.pop()
         return
 
-### 3. 删除整个draw
     def clear_draw(self):
         self.temImage.void_xs_list = []
         self.temImage.void_ys_list = []
@@ -1075,12 +1024,13 @@ class UI:
         self.line.set_data(rect_x, rect_y)
         self.line.figure.canvas.draw()
 
-### 1. 松开鼠标是的响应函数 用于drag box的读取坐标。
     def on_release(self, event):
 
         if self.var4.get() == 1:
             return
         else:
+            if not self.xs:
+                return
             if event.inaxes != self.line.axes:
                 return
             self.xs.append(event.xdata)
@@ -1092,7 +1042,6 @@ class UI:
             self.line.figure.canvas.draw()
             self.xs, self.ys = [], []
 
-###### 将drag box的坐标值赋值给 parameters 并插入到ui 的boundary output
     def bind_parameter(self):
         labels = [LEFT, RIGHT, TOP, BOTTOM]
         for label_item in labels:
@@ -1106,7 +1055,6 @@ class UI:
             self.boundary_ui[label_item].insert(INSERT, boundary[i])
             i += 1
 
-# 画threshold的散点图。
     def threshold_scatter(self, region=True):
         threshold = int(self.threshold_ui.get())
         self.parameters.set_threshold_value(threshold)
@@ -1117,9 +1065,7 @@ class UI:
             self.scat = self.ax.scatter(self.parameters.threshold_list_y, self.parameters.threshold_list_x, 0.05,
                                         color='yellow')
 
-# 画图函数
-##### 1. 4. 链接左键 ，右键， 以及delete button
-    def plot(self, value=0, threshold_flag=False, gray_flag=False, grid=False, boundary_flag=False):
+    def plot(self, threshold_flag=False, gray_flag=False, grid=False, boundary_flag=False):
         plt.cla()
         self.ax.imshow(self.temImage.image)
         self.line, = self.ax.plot([0], [0], color='yellow')
@@ -1147,7 +1093,8 @@ class UI:
             self.ax.scatter(self.temImage.scale_x, self.temImage.scale_y, 0.2, color='red')
 
         if self.parameters.threshold_list_x and self.parameters.threshold_list_y and threshold_flag:
-            self.scat = self.ax.scatter(self.parameters.threshold_list_y, self.parameters.threshold_list_x, 0.05, color='yellow')
+            self.scat = self.ax.scatter(self.parameters.threshold_list_y, self.parameters.threshold_list_x, 0.05,
+                                        color='yellow')
 
         if self.parameters.gray_threshold_list_x and self.parameters.gray_threshold_list_y and gray_flag:
             self.ax.scatter(self.parameters.gray_threshold_list_y, self.parameters.gray_threshold_list_x, 0.2,
@@ -1159,45 +1106,66 @@ class UI:
                                            self.parameters.bottom, self.parameters.right, self.parameters.angle)
             self.ax.scatter(rect_x, rect_y, 0.1, color='blue')
 
-        if value == 1:
-            for SectionText in range(0, len(self.temImage.section_list)):
-                self.ax.text(self.parameters.left, self.temImage.section_list[SectionText][0],
-                             'Layer ' + str(SectionText + 1) + ': ' +
-                             str('%.2f' % self.temImage.thickness_list[SectionText]) + ' nm', fontsize=7)
-
-        if value == 2:
-            for SectionText in range(0, len(self.temImage.section_list)):
-                self.ax.text((self.parameters.left + self.parameters.right) * 0.5,
-                             self.temImage.section_list[SectionText][0],
-                             'Layer ' + str(SectionText + 1) + ': ' +
-                             str('%.2f' % self.temImage.void_list[SectionText]), fontsize=7)
-
-        if value == 3:
-            if self.var2.get() == 0:
-                self.ax.scatter(*self.temImage.sd_position, 0.1, color='white')
-                for SectionText in range(0, len(self.temImage.sw_thick_list)):
-                    self.ax.text(self.parameters.left, self.temImage.sw_section_list[SectionText][0],
+        if self.parameters.is_ready():
+            if self.combo_list.get() == 'Thickness':
+                for SectionText in range(0, len(self.temImage.row_list)):
+                    self.ax.text(self.parameters.left, self.temImage.row_list[SectionText][0],
                                  'Layer ' + str(SectionText + 1) + ': ' +
-                                 str('%.2f' % self.temImage.sw_thick_list[SectionText]) + ' nm', color='yellow',
+                                 str('%.2f' % self.temImage.output.thickness.row[SectionText]) + ' nm', fontsize=7)
+
+            if self.combo_list.get() == 'Void Percentage':
+                for SectionText in range(0, len(self.temImage.row_list)):
+                    self.ax.text((self.parameters.left + self.parameters.right) * 0.5,
+                                 self.temImage.row_list[SectionText][0],
+                                 'Layer ' + str(SectionText + 1) + ': ' +
+                                 str('%.2f' % self.temImage.output.void.row[SectionText]), fontsize=7)
+
+            if self.combo_list.get() == 'Sidewall':
+                self.ax.scatter(*self.temImage.sd_position, 0.1, color='white')
+                for SectionText in range(0, len(self.temImage.output.sidewall.row)):
+                    self.ax.text(self.parameters.left, self.temImage.sw_row_list[SectionText][0],
+                                 'Layer ' + str(SectionText + 1) + ': ' +
+                                 str('%.2f' % self.temImage.output.sidewall.row[SectionText]) + ' nm', color='yellow',
                                  fontsize=7)
-                    self.ax.text(self.parameters.left, self.temImage.sw_section_list[SectionText][0] + 40,
-                                 'R: ' +
-                                 str('%.2f' % self.temImage.sw_rough_list[SectionText]) + ' nm', color='yellow',
-                                 fontsize=7)
-            self.ax.text(self.parameters.right + 5,
-                         (self.parameters.top + self.parameters.bottom) * 0.5,
-                         'Thickness:' + str('%.3f' % self.temImage.sidewall) + ' nm', color='blue', fontsize=7)
-            self.ax.text(self.parameters.right + 5, (self.parameters.top + self.parameters.bottom) * 0.5 + 40,
-                         'Roughness: ' + str('%.3f' % self.temImage.roughness) + ' nm', color='blue', fontsize=7)
+                    self.ax.text(self.parameters.left, self.temImage.sw_row_list[SectionText][0] + 40,
+                                 'R: ' + str('%.2f' % self.temImage.output.roughness.row[SectionText]) + ' nm',
+                                 color='yellow', fontsize=7)
+                self.ax.text(self.parameters.right + 5, (self.parameters.top + self.parameters.bottom) * 0.5,
+                             'Thickness:' + str('%.3f' % self.temImage.output.whole_sidewall) + ' nm',
+                             color='blue', fontsize=7)
+                self.ax.text(self.parameters.right + 5, (self.parameters.top + self.parameters.bottom) * 0.5 + 40,
+                             'Roughness: ' + str('%.3f' % self.temImage.output.whole_roughness) + ' nm',
+                             color='blue', fontsize=7)
+
+            if self.combo_list.get() == 'Field':
+                self.ax.text(self.parameters.right + 5, (self.parameters.top + self.parameters.bottom) * 0.5,
+                             'Thickness:' + str('%.3f' % self.temImage.output.whole_sidewall) + ' nm',
+                             color='blue', fontsize=7)
+                self.ax.text(self.parameters.right + 5, (self.parameters.top + self.parameters.bottom) * 0.5 + 40,
+                             'Roughness: ' + str('%.3f' % self.temImage.output.whole_roughness) + ' nm',
+                             color='blue', fontsize=7)
+
+            if self.combo_list.get() == 'WL Height':
+                for SectionText in range(0, len(self.temImage.row_list)):
+                    self.ax.text(self.parameters.left, self.temImage.row_list[SectionText][0],
+                                 'Layer ' + str(SectionText + 1) + ': ' +
+                                 str('%.2f' % self.temImage.output.wl_height.row[SectionText]) + ' nm', fontsize=7)
+                    self.ax.text(self.temImage.wl_mid_position, self.temImage.row_list[SectionText][0],
+                                 'Mid: ' + str('%.2f' % self.temImage.output.wl_mid.row[SectionText]) + ' nm',
+                                 color='blue', fontsize=7)
+                mid = self.temImage.wl_mid_position
+                x = [mid] * (self.parameters.bottom - self.parameters.top)
+                y = [i for i in range(self.parameters.top, self.parameters.bottom)]
+                self.ax.scatter(x, y, 0.1, color='white')
 
         plt.show()
 
     def grid_reset(self):
         self.parameters.field_position = int(self.field_ui.get())
+        self.parameters.bottom_cut = int(self.bottom_cut_ui.get())
         self.parameters.discontinuity = int(self.discontinuity_ui.get())
         self.parameters.noise_level = int(self.noise_ui.get())
-# 以下函数，基本都是创建并响应UI里面的不同button的， 包括griding image, plot threshold, calculate thickness/void/sidewall.
-# 如果已经有UI的话，不是很重要。
+
     def grid_plot(self):
         self.grid_reset()
         self.parameters.grid_parameter = int(self.grid_parameter_ui.get())
@@ -1294,31 +1262,36 @@ class UI:
     def get_thickness(self):
         self.state_check()
         self.refresh(t=False, b=False)
-        with_thickness = 0
         if self.parameters.is_ready():
             self.temImage.calculate_thickness(self.parameters)
             self.thickness_output_ui()
-            with_thickness = 1
-        self.plot(value=with_thickness, threshold_flag=True, boundary_flag=True)
+        self.plot(threshold_flag=True, boundary_flag=True)
         return
 
     def get_void(self):
         self.state_check()
         self.refresh(t=False, b=False)
-        with_void = 0
         if self.parameters.is_ready():
             self.temImage.calculate_thickness(self.parameters, voids=True)
             self.void_output_ui()
-            with_void = 2
-        self.plot(value=with_void, threshold_flag=True, boundary_flag=True)
+        self.plot(threshold_flag=True, boundary_flag=True)
+        return
+
+    def get_wl_height(self):
+        self.state_check()
+        self.refresh(t=False, b=False)
+        if self.parameters.is_ready():
+            self.temImage.calculate_thickness(self.parameters, wl_height=True)
+            self.wl_height_ui()
+        self.plot(threshold_flag=True, boundary_flag=True)
         return
 
     def thickness_output_ui(self):
         pad_x, pad_y, inter_x = 5, 2, 5
         self.mean_thick_ui.delete(0, 'end')
         self.sd_thick_ui.delete(0, 'end')
-        self.mean_thick_ui.insert(INSERT, str('%.3f' % self.temImage.thickness))
-        self.sd_thick_ui.insert(INSERT, str('%.3f' % self.temImage.standard_deviation))
+        self.mean_thick_ui.insert(INSERT, str('%.3f' % self.temImage.output.thickness.mean))
+        self.sd_thick_ui.insert(INSERT, str('%.3f' % self.temImage.output.thickness.sd))
         self.table_ui('Thickness')
         Button(self.btm_frame, text='Column Distribution', command=lambda: self.distribution('Column')). \
             grid(sticky='EW', row=0, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
@@ -1329,161 +1302,186 @@ class UI:
         pad_x, pad_y, inter_x = 5, 2, 5
         self.mean_void_ui.delete(0, 'end')
         self.sd_void_ui.delete(0, 'end')
-        self.mean_void_ui.insert(INSERT, str('%.3f' % (100 * self.temImage.void_percentage)))
-        self.sd_void_ui.insert(INSERT, str('%.3f' % self.temImage.void_sd))
+        self.mean_void_ui.insert(INSERT, str('%.3f' % (100 * self.temImage.output.void.mean)))
+        self.sd_void_ui.insert(INSERT, str('%.3f' % self.temImage.output.void.sd))
         self.table_ui('Void%')
         Button(self.btm_frame, text='Column Distribution', command=lambda: self.distribution('Column', void=True)). \
             grid(sticky='EW', row=0, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
         Button(self.btm_frame, text='Row Distribution', command=lambda: self.distribution('Row', void=True)). \
             grid(sticky='EW', row=1, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
 
+    def wl_height_ui(self):
+        pad_x, pad_y, inter_x = 5, 2, 5
+        self.mean_wl_height_ui.delete(0, 'end')
+        self.sd_wl_height_ui.delete(0, 'end')
+        self.mean_wl_height_ui.insert(INSERT, str('%.3f' % self.temImage.output.wl_height.mean))
+        self.sd_wl_height_ui.insert(INSERT, str('%.3f' % self.temImage.output.wl_height.sd))
+
+        self.mean_mid_height_ui.delete(0, 'end')
+        self.sd_mid_height_ui.delete(0, 'end')
+        self.mean_mid_height_ui.insert(INSERT, str('%.3f' % self.temImage.output.wl_mid.mean))
+        self.sd_mid_height_ui.insert(INSERT, str('%.3f' % self.temImage.output.wl_mid.sd))
+
+        self.table_ui('WL Height')
+
+        Button(self.btm_frame, text='Column Distribution',
+               command=lambda: self.distribution('Column', wl_height=True)).\
+            grid(sticky='EW', row=0, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
+        Button(self.btm_frame, text='Row Distribution', command=lambda: self.distribution('Row', wl_height=True)). \
+            grid(sticky='EW', row=1, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
+
     def get_sidewall(self):
         self.state_check()
         self.refresh(t=False, b=False)
-        with_side = 0
         if self.parameters.is_ready():
-            with_side = 3
-            self.temImage.calculate_sidewall(self.parameters, self.var2.get())
+            self.temImage.calculate_sidewall(self.parameters, self.combo_list.get() == 'Field')
             self.sidewall_ui()
-        self.plot(value=with_side, threshold_flag=True, boundary_flag=True)
+        self.plot(threshold_flag=True, boundary_flag=True)
         return
 
     def sidewall_ui(self):
         pad_x, pad_y, inter_x = 5, 2, 5
         self.sw_thickness_ui.delete(0, 'end')
         self.sw_roughness_ui.delete(0, 'end')
-        self.sw_thickness_ui.insert(INSERT, str('%.3f' % self.temImage.sidewall))
-        self.sw_roughness_ui.insert(INSERT, str('%.3f' % self.temImage.roughness))
+        self.sw_thickness_ui.insert(INSERT, str('%.3f' % self.temImage.output.whole_sidewall))
+        self.sw_roughness_ui.insert(INSERT, str('%.3f' % self.temImage.output.whole_roughness))
 
-        if self.var2.get() == 0:
+        if self.combo_list.get() == 'Sidewall':
             self.temImage.calculate_sidewall_section(self.parameters)
-            self.setup_sw_frame()
+            self.table_ui('Sidewall')
             Button(self.btm_frame, text='Thickness', command=lambda: self.distribution('Row', sidewall=1)). \
                 grid(sticky='EW', row=0, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
             Button(self.btm_frame, text='Roughness', command=lambda: self.distribution('Row', sidewall=2)). \
                 grid(sticky='EW', row=1, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
 
-    def setup_sw_frame(self):
-        pad_x, pad_y, inter_x = 5, 2, 5
-        self.sw_frame.grid(row=3, column=4, sticky='EW', padx=5, pady=2)
-        height = len(self.temImage.sw_thick_list) + 3
-        width = 3
-        b = [[0 for x in range(width)] for y in range(height)]
-        b[0][0] = 'Sidewall'
-        for i in range(1, height - 2):
-            b[i][0] = 'Row %s' % str(i)
-            b[i][1] = '%.3f' % self.temImage.sw_thick_list[i - 1]
-            b[i][2] = '%.3f' % self.temImage.sw_rough_list[i - 1]
-        b[height - 1][0] = 'SD'
-        b[height - 2][0] = 'Average'
-        if len(self.temImage.sw_thick_list) > 1:
-            b[height - 1][1] = '%.3f' % statistics.stdev(self.temImage.sw_thick_list)
-            b[height - 2][1] = '%.3f' % statistics.mean(self.temImage.sw_thick_list)
-            b[height - 1][2] = '%.3f' % statistics.stdev(self.temImage.sw_rough_list)
-            b[height - 2][2] = '%.3f' % statistics.mean(self.temImage.sw_rough_list)
-        else:
-            b[height - 1][1] = 'NA'
-            b[height - 2][1] = 'NA'
-            b[height - 1][2] = 'NA'
-            b[height - 2][2] = 'NA'
-        b[0][1] = 'Thickness'
-        b[0][2] = 'Roughness'
-
-        self.sw_table = [[0 for x in range(width)] for y in range(height)]
-
-        for i in range(height):
-            for j in range(width):
-                self.sw_table[i][j] = Entry(self.sw_frame)
-                self.sw_table[i][j].place(x=j * 70, y=i * 20, width=70)
-                self.sw_table[i][j].insert(INSERT, b[i][j])
-
-        Button(self.btm_frame, text='Output', command=lambda: self.out2csv(b, 'Sidewall')). \
-            grid(sticky='EW', row=2, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
-
     def table_ui(self, s):
         pad_x, pad_y, inter_x = 5, 2, 5
-        column = []
-        row = []
-        matrix = []
-        average = 0
-        if s == 'Thickness':
-            column = self.temImage.thickness_column
-            row = self.temImage.thickness_list
-            matrix = self.temImage.thickness_matrix
-            average = self.temImage.thickness
-        if s == 'Void%':
-            column = self.temImage.void_column
-            row = self.temImage.void_list
-            matrix = self.temImage.void_matrix
-            average = self.temImage.void_percentage
+        if s == 'Sidewall':
+            height = len(self.temImage.output.sidewall.row) + 3
+            width = 3
+            b = [[0 for x in range(width)] for y in range(height)]
+            b[0][0] = s
+            for i in range(1, height - 2):
+                b[i][0] = 'Row %s' % str(i)
+                b[i][1] = '%.3f' % self.temImage.output.sidewall.row[i - 1]
+                b[i][2] = '%.3f' % self.temImage.output.roughness.row[i - 1]
+            b[height - 1][0] = 'SD'
+            b[height - 2][0] = 'Average'
+            if len(self.temImage.output.sidewall.row) > 1:
+                b[height - 1][1] = '%.3f' % statistics.stdev(self.temImage.output.sidewall.row)
+                b[height - 2][1] = '%.3f' % statistics.mean(self.temImage.output.sidewall.row)
+                b[height - 1][2] = '%.3f' % statistics.stdev(self.temImage.output.roughness.row)
+                b[height - 2][2] = '%.3f' % statistics.mean(self.temImage.output.roughness.row)
+            else:
+                b[height - 1][1] = 'NA'
+                b[height - 2][1] = 'NA'
+                b[height - 1][2] = 'NA'
+                b[height - 2][2] = 'NA'
+            b[0][1] = 'Thickness'
+            b[0][2] = 'Roughness'
 
-        height = len(self.temImage.section_list) + 2
-        width = 12
-        b = [[0 for x in range(width)] for y in range(height)]
-        self.output_table = [[0 for x in range(width)] for y in range(height)]
-
-        b[0][0] = s
-        for j in range(1, width - 1):
-            b[0][j] = 'Col %s' % str(j)
-            b[height - 1][j] = '%.3f' % column[j - 1]
-        for i in range(1, height - 1):
-            b[i][0] = 'Row %s' % str(i)
-            b[i][width - 1] = '%.3f' % row[i - 1]
-        for i in range(1, height - 1):
-            for j in range(1, width - 1):
-                b[i][j] = '%.3f' % matrix[i - 1][j - 1]
-        b[0][width - 1] = 'C-Average'
-        b[height - 1][0] = 'R-Average'
-        b[height - 1][width - 1] = '%.3f' % average
-        self.table_frame.grid(row=3, columnspan=3, sticky='EW', padx=5, pady=2)
-        for i in range(height):
-            for j in range(width):
-                self.output_table[i][j] = Entry(self.table_frame)
-                if j == 0:
+            self.output_table = [[0 for x in range(width)] for y in range(height)]
+            self.table_frame.grid(row=3, columnspan=3, sticky='EW', padx=5, pady=2)
+            for i in range(height):
+                for j in range(width):
+                    self.output_table[i][j] = Entry(self.table_frame)
                     self.output_table[i][j].place(x=j * 70, y=i * 20, width=70)
-                elif j == width - 1:
-                    self.output_table[i][j].place(x=120 + (j - 2) * 50, y=i * 20, width=70)
-                else:
-                    self.output_table[i][j].place(x=70 + (j - 1) * 50, y=i * 20, width=50)
-                self.output_table[i][j].insert(INSERT, b[i][j])
+                    self.output_table[i][j].insert(INSERT, b[i][j])
+
+        elif s == 'Thickness' or s == 'Void%' or s == 'WL Height':
+            column, row, matrix, average = self.temImage.output.table_content(s)
+            add_width = 0
+
+            if s == 'WL Height':
+                add_width = 1
+
+            height = len(self.temImage.row_list) + 2
+            width = 12
+            b = [[0 for x in range(width + add_width)] for y in range(height)]
+            b[0][0] = s
+            for j in range(1, width - 1):
+                b[0][j] = 'Col %s' % str(j)
+                b[height - 1][j] = '%.3f' % column[j - 1]
+            for i in range(1, height - 1):
+                b[i][0] = 'Row %s' % str(i)
+                b[i][width - 1] = '%.3f' % row[i - 1]
+            for i in range(1, height - 1):
+                for j in range(1, width - 1):
+                    b[i][j] = '%.3f' % matrix[i - 1][j - 1]
+            b[0][width - 1] = 'C-Average'
+            b[height - 1][0] = 'R-Average'
+            b[height - 1][width - 1] = '%.3f' % average
+
+            if s == 'WL Height':
+                b[0][width + add_width - 1] = 'Mid'
+                for i in range(1, height - 1):
+                    b[i][width + add_width - 1] = '%.3f' % self.temImage.output.wl_mid.row[i - 1]
+                b[height - 1][width + add_width - 1] = '%.3f' % self.temImage.output.wl_mid.mean
+
+            self.output_table = [[0 for x in range(width + add_width)] for y in range(height)]
+            self.table_frame.grid(row=3, columnspan=3, sticky='EW', padx=5, pady=2)
+            for i in range(height):
+                for j in range(width):
+                    self.output_table[i][j] = Entry(self.table_frame)
+                    if j == 0:
+                        self.output_table[i][j].place(x=j * 70, y=i * 20, width=70)
+                    elif j == width - 1:
+                        self.output_table[i][j].place(x=120 + (j - 2) * 50, y=i * 20, width=70)
+                    else:
+                        self.output_table[i][j].place(x=70 + (j - 1) * 50, y=i * 20, width=50)
+                    self.output_table[i][j].insert(INSERT, b[i][j])
+            if s == 'WL Height':
+                for i in range(height):
+                    self.output_table[i][width + add_width - 1] = Entry(self.table_frame)
+                    self.output_table[i][width + add_width - 1].place(x=120 + width * 50, y=i * 20, width=50)
+                    self.output_table[i][width + add_width - 1].insert(INSERT, b[i][width + add_width - 1])
 
         Button(self.btm_frame, text='Output', command=lambda: self.out2csv(b, s)). \
             grid(sticky='EW', row=2, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
 
     def out2csv(self, data, name):
         my_data = data
-        label, summary = [], []
+        summary = []
+        label = [[], [self.temImage.filename], ['%s Analysis' % name], []]
         if name == 'Thickness':
-            label = [[self.temImage.filename], ['Thickness Analysis']]
-            summary = [['Thickness', 'SD'], [self.temImage.thickness, self.temImage.standard_deviation]]
+            summary = [['Thickness', 'SD'], [self.temImage.output.thickness.mean, self.temImage.output.thickness.sd], []]
         if name == 'Void%':
-            label = [[self.temImage.filename], ['Void Analysis']]
-            summary = [['Void Percentage', 'SD'], [self.temImage.void_percentage, self.temImage.void_sd]]
+            summary = [['Void Percentage', 'SD'], [self.temImage.output.void.mean, self.temImage.output.void.sd], []]
         if name == 'Sidewall':
-            label = [[self.temImage.filename], ['Sidewall Analysis']]
-            summary = [['Thickness', 'Roughness'], [self.temImage.sidewall, self.temImage.roughness]]
+            summary = [['Thickness', 'Roughness'],
+                       [self.temImage.output.whole_sidewall, self.temImage.output.whole_roughness], []]
+        if name == 'WL Height':
+            summary = [['Height', 'SD'], [self.temImage.output.wl_height.mean, self.temImage.output.wl_height.sd],
+                       ['Height (Mid)', 'SD (Mid)'], [self.temImage.output.wl_mid.mean, self.temImage.output.wl_mid.sd], []]
 
-        my_file = open('Output.csv', 'a')
-        with my_file:
+        threshold = [['Threshold', self.parameters.threshold], ['Grid Parameter', self.parameters.grid_parameter]]
+        analysis_region = [['Left', self.parameters.left], ['Right', self.parameters.right],
+                           ['Top', self.parameters.top], ['Bottom', self.parameters.bottom], []]
+
+        with open('Output.csv', 'a', newline='') as my_file:
             writer = csv.writer(my_file)
-            writer.writerows(label)
-            writer.writerows(summary)
-            writer.writerows(my_data)
+            for i in [label, summary, threshold, analysis_region, my_data]:
+                writer.writerows(i)
 
-    def distribution(self, name, void=False, sidewall=0):
+    def distribution(self, name, void=False, wl_height=False, sidewall=0):
         y = []
         if name == 'Column':
-            y = self.temImage.thickness_column
+            y = self.temImage.output.thickness.column
             if void:
-                y = [100 * float(n) for n in self.temImage.void_column]
+                y = [100 * float(n) for n in self.temImage.output.void.column]
+            if wl_height:
+                y = self.temImage.output.wl_height.column
+
         if name == 'Row':
-            y = self.temImage.thickness_list
+            y = self.temImage.output.thickness.row
             if void:
-                y = [100 * float(n) for n in self.temImage.void_list]
+                y = [100 * float(n) for n in self.temImage.output.void.row]
+            if wl_height:
+                y = self.temImage.output.wl_height.row
             if sidewall == 1:
-                y = self.temImage.sw_thick_list
+                y = self.temImage.output.sidewall.row
             if sidewall == 2:
-                y = self.temImage.sw_rough_list
+                y = self.temImage.output.roughness.row
 
         length = len(y)
         width = 0.4
@@ -1493,6 +1491,8 @@ class UI:
         plt.ylabel('Thickness (nm)')
         if void:
             plt.ylabel('Void Percentage (%)')
+        if wl_height:
+            plt.ylabel('WL Height (nm)')
         if sidewall == 1:
             plt.ylabel('Thickness (nm)')
         if sidewall == 2:
@@ -1510,12 +1510,9 @@ class UI:
         global connect_flag
         if connect_flag:
             count = int(self.threshold_ui.get())
-            # respond to Linux or Windows wheel event
             if event.button == 'up':
-                # deal with zoom in
                 count -= 1
             elif event.button == 'down':
-                # deal with zoom out
                 count += 1
 
             self.threshold_ui.delete(0, 'end')
@@ -1563,9 +1560,14 @@ class UI:
         self.field_ui.grid(sticky='W', row=0, column=1, padx=pad_x, pady=pad_y)
         self.field_ui.insert(INSERT, 0)
 
-        Label(self.left_frame2, text="Discontinuity").grid(sticky='W', row=0, column=2, padx=pad_x - 2, pady=pad_y)
+        Label(self.left_frame2, text="Bottom Region").grid(sticky='W', row=0, column=2, padx=pad_x - 2, pady=pad_y)
+        self.bottom_cut_ui = Entry(self.left_frame2)
+        self.bottom_cut_ui.grid(sticky='W', row=0, column=3, padx=pad_x, pady=pad_y)
+        self.bottom_cut_ui.insert(INSERT, 0)
+
+        Label(self.left_frame2, text="Discontinuity").grid(sticky='W', row=1, column=2, padx=pad_x - 2, pady=pad_y)
         self.discontinuity_ui = Entry(self.left_frame2)
-        self.discontinuity_ui.grid(sticky='W', row=0, column=3, padx=pad_x, pady=pad_y)
+        self.discontinuity_ui.grid(sticky='W', row=1, column=3, padx=pad_x, pady=pad_y)
         self.discontinuity_ui.insert(INSERT, 0)
 
         Label(self.left_frame2, text="Noise Level").grid(sticky='W', row=1, column=0, padx=pad_x - 2, pady=pad_y)
@@ -1573,14 +1575,14 @@ class UI:
         self.noise_ui.grid(sticky='W', row=1, column=1, padx=pad_x, pady=pad_y)
         self.noise_ui.insert(INSERT, 2)
 
-        #Label(self.left_frame2, text="Gray Threshold").grid(sticky='W', row=0, column=0, padx=pad_x - 2, pady=pad_y)
-        #self.gray_threshold_ui = Entry(self.left_frame2)
-        #self.gray_threshold_ui.insert(INSERT, 125)
-        #self.gray_threshold_ui.grid(sticky='W', row=0, column=1, padx=pad_x, pady=pad_y)
-        #Button(self.left_frame2, text='Plot Threshold', command=lambda: self.plot_gray_threshold()). \
+        # Label(self.left_frame2, text="Gray Threshold").grid(sticky='W', row=0, column=0, padx=pad_x - 2, pady=pad_y)
+        # self.gray_threshold_ui = Entry(self.left_frame2)
+        # self.gray_threshold_ui.insert(INSERT, 125)
+        # self.gray_threshold_ui.grid(sticky='W', row=0, column=1, padx=pad_x, pady=pad_y)
+        # Button(self.left_frame2, text='Plot Threshold', command=lambda: self.plot_gray_threshold()). \
         #    grid(sticky='EW', row=0, column=2, padx=pad_x, pady=pad_y, ipadx=inter_x)
 
-        #Button(self.left_frame2, text='Bi-Image', command=lambda: self.plot_bi_image()). \
+        # Button(self.left_frame2, text='Bi-Image', command=lambda: self.plot_bi_image()). \
         #    grid(sticky='EW', row=0, column=3, padx=pad_x, pady=pad_y, ipadx=inter_x + 7)
         Button(self.left_frame2, text='Image Grid', command=lambda: self.grid_plot()). \
             grid(sticky='EW', row=2, column=0, padx=pad_x, pady=pad_y, ipadx=inter_x - 1)
@@ -1612,31 +1614,65 @@ class UI:
         Button(self.right_frame, text='Get Boundary', command=lambda: self.get_boundary()) \
             .grid(sticky='W', row=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
 
+    def drop_down(self, *args):
+        pad_x = 5
+        pad_y = 2
+        inter_x = 5
+
+        choice = self.combo_list.get()
+        for label in self.btm_frame.grid_slaves():
+            if int(label.grid_info()["row"]) > 0 and int(label.grid_info()['column'] < 5):
+                label.grid_forget()
+
+        if choice == 'Thickness':
+            Button(self.btm_frame, text='Calculate', command=lambda: self.get_thickness()). \
+                grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
+            Label(self.btm_frame, text='Thickness (nm):').grid(sticky='W', row=1, column=1, padx=pad_x)
+            self.mean_thick_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
+            Label(self.btm_frame, text='SD (nm):').grid(sticky='W', row=1, column=3, padx=pad_x)
+            self.sd_thick_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
+        if choice == 'Void Percentage':
+            Button(self.btm_frame, text='Calculate', command=lambda: self.get_void()). \
+                grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
+            Label(self.btm_frame, text='Void Percentage:').grid(sticky='W', row=1, column=1, padx=pad_x)
+            self.mean_void_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
+            Label(self.btm_frame, text='SD:').grid(sticky='W', row=1, column=3, padx=pad_x)
+            self.sd_void_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
+        if choice == 'Sidewall' or choice == 'Field':
+            Button(self.btm_frame, text='Calculate', command=lambda: self.get_sidewall()). \
+                grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
+            Label(self.btm_frame, text='Thickness (nm):').grid(sticky='W', row=1, column=1, padx=pad_x)
+            self.sw_thickness_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
+            Label(self.btm_frame, text='Roughness (nm):').grid(sticky='W', row=1, column=3, padx=pad_x)
+            self.sw_roughness_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
+        if choice == 'WL Height':
+            Button(self.btm_frame, text='Calculate', command=lambda: self.get_wl_height()). \
+                grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
+            Label(self.btm_frame, text='WL Height (nm):').grid(sticky='W', row=1, column=1, padx=pad_x)
+            self.mean_wl_height_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
+            Label(self.btm_frame, text='SD (nm):').grid(sticky='W', row=1, column=3, padx=pad_x)
+            self.sd_wl_height_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
+
+            Label(self.btm_frame, text='WL Height (Mid, nm):').grid(sticky='W', row=2, column=1, padx=pad_x)
+            self.mean_mid_height_ui.grid(sticky='W', row=2, column=2, padx=pad_x)
+            Label(self.btm_frame, text='SD (Mid, nm):').grid(sticky='W', row=2, column=3, padx=pad_x)
+            self.sd_mid_height_ui.grid(sticky='W', row=2, column=4, padx=pad_x)
+
     def setup_btm_frame(self):
         pad_x = 5
         pad_y = 2
         inter_x = 5
-        Button(self.btm_frame, text='Thickness', command=lambda: self.get_thickness()). \
-            grid(sticky='EW', row=0, padx=pad_x, pady=pad_y, ipadx=inter_x)
-        Button(self.btm_frame, text='Void Percentage', command=lambda: self.get_void()). \
+
+        self.combo_list.current(0)
+        self.combo_list.bind("<<ComboboxSelected>>", self.drop_down)
+        self.combo_list.grid(sticky='EW', row=0, padx=pad_x, pady=pad_y, ipadx=inter_x)
+
+        Button(self.btm_frame, text='Calculate', command=lambda: self.get_thickness()). \
             grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
-        Button(self.btm_frame, text='Sidewall/Field', command=lambda: self.get_sidewall()). \
-            grid(sticky='EW', row=2, padx=pad_x, pady=pad_y, ipadx=inter_x)
-
-        Label(self.btm_frame, text='Thickness (nm):').grid(sticky='W', row=0, column=1, padx=pad_x)
-        self.mean_thick_ui.grid(sticky='W', row=0, column=2, padx=pad_x)
-        Label(self.btm_frame, text='Standard Deviation:').grid(sticky='W', row=0, column=3, padx=pad_x)
-        self.sd_thick_ui.grid(sticky='W', row=0, column=4, padx=pad_x)
-
-        Label(self.btm_frame, text='Void Percentage:').grid(sticky='W', row=1, column=1, padx=pad_x)
-        self.mean_void_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
-        Label(self.btm_frame, text='Standard Deviation:').grid(sticky='W', row=1, column=3, padx=pad_x)
-        self.sd_void_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
-
-        Label(self.btm_frame, text='Thickness (nm):').grid(sticky='W', row=2, column=1, padx=pad_x)
-        self.sw_thickness_ui.grid(sticky='W', row=2, column=2, padx=pad_x)
-        Label(self.btm_frame, text='Roughness (nm):').grid(sticky='W', row=2, column=3, padx=pad_x)
-        self.sw_roughness_ui.grid(sticky='W', row=2, column=4, padx=pad_x)
+        Label(self.btm_frame, text='Thickness (nm):').grid(sticky='W', row=1, column=1, padx=pad_x)
+        self.mean_thick_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
+        Label(self.btm_frame, text='SD (nm):').grid(sticky='W', row=1, column=3, padx=pad_x)
+        self.sd_thick_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
 
         Button(self.btm_frame, text='Column Distribution'). \
             grid(sticky='EW', row=0, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
@@ -1644,9 +1680,6 @@ class UI:
             grid(sticky='EW', row=1, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
         Button(self.btm_frame, text='Output'). \
             grid(sticky='EW', row=2, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
-
-        Checkbutton(self.btm_frame, text="Field Region", variable=self.var2). \
-            grid(sticky='NSEW', row=3, column=0, padx=pad_x, pady=pad_y)
 
     def construct_ui(self):
         self.root.geometry('840x450+50+50')

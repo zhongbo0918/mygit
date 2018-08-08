@@ -428,7 +428,7 @@ class Parameters:
         self.h_grid, self.v_grid = [], []
         length = len(im_v_grid)
         for i in range(length):
-            if len(im_h_grid[i]) > self.noise_level:
+            if len(im_h_grid[i]) >= self.noise_level:
                 self.v_grid.append(im_v_grid[i])
                 self.h_grid.append(im_h_grid[i])
 
@@ -473,6 +473,7 @@ class Parameters:
         return self.grid(width, height, region, data)
 
     def left_right(self, mid, region, width, height, data):
+
         column = [(j, data[j * width + mid][0]) for j in range(height)]
         white_range = [-2, -1]
         white_list = []
@@ -484,6 +485,10 @@ class Parameters:
             if i[1] > self.grid_parameter and white_range[0] == -1:
                 white_range[0] = i[0]
             if i[1] <= self.grid_parameter and white_range[0] >= 0:
+                white_range[1] = i[0]
+                white_list.append(white_range)
+                white_range = [-1, -1]
+            if white_range[0] >= 0 and i[0] == height-1:
                 white_range[1] = i[0]
                 white_list.append(white_range)
                 white_range = [-1, -1]
@@ -572,6 +577,7 @@ class TEMImage:
         if 'OUTS' not in self.filename:
             self.image_type = 'STEM'
             ratio, height = read_tif_image(image)
+            self.scale_x, self.scale_y = [], []
 
         self.image = image.convert("RGB")
         self.width, self.height = self.image.size
@@ -730,6 +736,10 @@ class TEMImage:
         for i in self.im_h_grid[n]:
             if i[0] >= parameters.top and i[1] <= parameters.bottom:
                 self.row_list.append(i)
+        if not self.row_list:
+            for i in self.im_h_grid[n]:
+                if i[0] < parameters.top and i[1] > parameters.bottom:
+                    self.row_list.append([parameters.top, parameters.bottom])
 
     def get_column_list(self, parameters):
         self.column_list = []

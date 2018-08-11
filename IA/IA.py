@@ -303,6 +303,25 @@ class Parameters:
         self.v_grid = []
         self.h_grid = []
 
+    def refresh(self):
+        self.set_boundary_values(None, None, None, None)
+        self.set_angle_value(0)
+        self.threshold = 0
+        self.threshold_list_x = []
+        self.threshold_list_y = []
+
+        self.black_x = []
+        self.black_y = []
+        self.gray_x = []
+        self.gray_y = []
+        self.white_x = []
+        self.white_y = []
+
+        self.grid_parameter = 50
+        self.grid_line_list = []
+        self.v_grid = []
+        self.h_grid = []
+
     def is_ready(self):
         return self.left and self.right and self.top and self.bottom and self.threshold
 
@@ -428,7 +447,7 @@ class Parameters:
         self.h_grid, self.v_grid = [], []
         length = len(im_v_grid)
         for i in range(length):
-            if len(im_h_grid[i]) >= self.noise_level:
+            if len(im_h_grid[i]) > self.noise_level:
                 self.v_grid.append(im_v_grid[i])
                 self.h_grid.append(im_h_grid[i])
 
@@ -473,7 +492,6 @@ class Parameters:
         return self.grid(width, height, region, data)
 
     def left_right(self, mid, region, width, height, data):
-
         column = [(j, data[j * width + mid][0]) for j in range(height)]
         white_range = [-2, -1]
         white_list = []
@@ -485,10 +503,6 @@ class Parameters:
             if i[1] > self.grid_parameter and white_range[0] == -1:
                 white_range[0] = i[0]
             if i[1] <= self.grid_parameter and white_range[0] >= 0:
-                white_range[1] = i[0]
-                white_list.append(white_range)
-                white_range = [-1, -1]
-            if white_range[0] >= 0 and i[0] == height-1:
                 white_range[1] = i[0]
                 white_list.append(white_range)
                 white_range = [-1, -1]
@@ -565,6 +579,10 @@ class TEMImage:
         assert os.path.exists(file_path)
         self.filename = os.path.split(file_path)[1]
         image = Image.open(file_path)
+        ratio, height = 0, 0
+        self.void_xs_list = []
+        self.void_ys_list = []
+        self.sd_position = ()
 
         scale_dict = {'-a': 1000, '-b': 200, '-c': 50}
         for key in scale_dict.keys():
@@ -577,7 +595,6 @@ class TEMImage:
         if 'OUTS' not in self.filename:
             self.image_type = 'STEM'
             ratio, height = read_tif_image(image)
-            self.scale_x, self.scale_y = [], []
 
         self.image = image.convert("RGB")
         self.width, self.height = self.image.size
@@ -736,10 +753,6 @@ class TEMImage:
         for i in self.im_h_grid[n]:
             if i[0] >= parameters.top and i[1] <= parameters.bottom:
                 self.row_list.append(i)
-        if not self.row_list:
-            for i in self.im_h_grid[n]:
-                if i[0] < parameters.top and i[1] > parameters.bottom:
-                    self.row_list.append([parameters.top, parameters.bottom])
 
     def get_column_list(self, parameters):
         self.column_list = []
@@ -832,138 +845,303 @@ class TEMImage:
             self.output.wl_mid.data_analysis()
 
 
-class UI:
+class BaseUI:
     def __init__(self):
         self.root = Tk()
         self.temImage = TEMImage()
         self.parameters = Parameters()
 
-        self.column_width = 20
-        self.check = 0
-
-        self.output_table = []
-        self.sw_table = []
-
         self.lf_width, self.lf1_height = 400, 100
         self.lf2_width, self.lf2_height = 400, 100
         self.rf_width, self.rf_height = 400, 200
-        self.btm_width, self.btm_height = 800, 200
-        self.table_width, self.table_height = 800, 400
-        self.sw_width, self.sw_height = 400, 400
-
         self.left_frame1 = LabelFrame(self.root, text='Image', relief=SUNKEN, bd=1,
                                       width=self.lf_width, height=self.lf1_height)
         self.left_frame2 = LabelFrame(self.root, text='Image Grid', relief=SUNKEN, bd=1,
                                       width=self.lf2_width, height=self.lf2_height)
         self.right_frame = LabelFrame(self.root, text='Analysis Region', relief=SUNKEN, bd=1, width=self.rf_width,
                                       height=self.rf_height)
+        self.btm_width, self.btm_height = 800, 200
+        self.table_width, self.table_height = 800, 400
         self.btm_frame = LabelFrame(self.root, text='Results', relief=SUNKEN, bd=1, width=self.btm_width,
                                     height=self.btm_height)
         self.table_frame = LabelFrame(self.root, text='Data', bd=0, width=self.table_width,
                                       height=self.table_height)
+        # self.fig = matplotlib.figure.Figure()
 
-        self.threshold_ui = Entry(self.left_frame1)
-        self.gray_threshold_ui = Entry(self.left_frame2)
-        self.grid_parameter_ui = Entry(self.left_frame2)
-        self.scale_bar_ui = Entry(self.left_frame1)
-        self.mean_thick_ui = Entry(self.btm_frame)
-        self.sd_thick_ui = Entry(self.btm_frame)
-        self.mean_void_ui = Entry(self.btm_frame)
-        self.sd_void_ui = Entry(self.btm_frame)
-        self.sw_thickness_ui = Entry(self.btm_frame)
-        self.sw_roughness_ui = Entry(self.btm_frame)
-        self.boundary_ui = {}
-        self.boundary_angle_ui = Entry(self.right_frame)
-        self.mean_wl_height_ui = Entry(self.btm_frame)
-        self.sd_wl_height_ui = Entry(self.btm_frame)
-        self.mean_mid_height_ui = Entry(self.btm_frame)
-        self.sd_mid_height_ui = Entry(self.btm_frame)
+    def connect(self):
+        return
 
-        com_value = StringVar()
-        self.combo_list = ttk.Combobox(self.btm_frame, textvariable=com_value)
-        self.combo_list["values"] = ('Thickness', 'Void Percentage', 'WL Height', 'Sidewall', 'Field')
+    def open_file_ui(self):
+        current_file = filedialog.askopenfilename(initialdir="C:/<whatever>", title="Select file",
+                                                  filetypes=(("tif files", "*.tif"), ("all files", "*.*")))
+        self.temImage.open_file(current_file)
+        self.parameters.refresh()
+        self.insert_ratio_ui()
+
+        self.fig = plt.figure()
+        self.ax = self.fig.add_subplot(111)
+        self.fig.canvas.manager.toolmanager.add_tool('Zoom', ModifiedZoom)
+        self.fig.canvas.manager.toolmanager.remove_tool('zoom')
+        self.fig.canvas.manager.toolbar.add_tool('Zoom', 'navigation', 1)
+        self.connect()
+        self.refresh()
+        
+        self.plot()
+
+    def plot(self, **kwargs):
+        plt.cla()
+        self.line, = self.ax.plot([0], [0], color='yellow')
+        self.ax.imshow(self.temImage.image)
+        self.ax_plot(**kwargs)
+        plt.show()
+
+    def construct_ui(self):
+        self.root.geometry('840x450+50+50')
+        self.root.title("Image Analysis")
+
+        menu_bar = Menu(self.root)
+        file_menu = Menu(menu_bar, tearoff=0)
+        file_menu.add_command(label="Open", command=self.open_file_ui)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.root.quit)
+        menu_bar.add_cascade(label="File", menu=file_menu)
+        self.root.config(menu=menu_bar)
+
+        self.left_frame1.grid(row=0, column=0, sticky='EW', padx=5, pady=2)
+        self.left_frame2.grid(row=1, column=0, sticky='EW', padx=5, pady=2)
+        self.right_frame.grid(row=0, column=1, rowspan=2, sticky='NSEW', padx=5, pady=2)
+        self.btm_frame.grid(row=2, columnspan=2, sticky='EW', padx=5, pady=2)
+        self.frame_setup()
+
+        self.root.mainloop()
+
+    def frame_setup(self):
+        return
+
+    def ax_plot(self, **kwargs):
+        return
+
+    def insert_ratio_ui(self):
+        return
+
+    def refresh(self):
+        return
+
+
+class FrameUI(BaseUI):
+    def __init__(self):
+        super().__init__()
+
+        self.threshold = Entry(self.left_frame1)
+        self.scale_bar = Entry(self.left_frame1)
+        self.boundary = {}
+        self.boundary_angle = Entry(self.right_frame)
 
         self.var1 = IntVar()
         self.var3 = IntVar()
         self.var4 = IntVar()
 
-        self.xs = []
-        self.ys = []
-        self.draw_xs = []
-        self.draw_ys = []
-        self.line_list = []
-        self.left_flag = 0
-
+        self.grid_parameter = Entry(self.left_frame2)
+        self.field = Entry(self.left_frame2)
+        self.bottom_cut = Entry(self.left_frame2)
+        self.discontinuity = Entry(self.left_frame2)
+        self.noise = Entry(self.left_frame2)
         self.scat = ''
 
-    def open_file_ui(self):
-        self.refresh()
-        current_file = filedialog.askopenfilename(initialdir="C:/<whatever>", title="Select file",
-                                                  filetypes=(("tif files", "*.tif"), ("all files", "*.*")))
-        self.temImage.open_file(current_file)
-        self.temImage.void_xs_list = []
-        self.temImage.void_ys_list = []
-        self.line_list = []
-        self.insert_ratio_ui()
-        self.fig = plt.figure()
-        self.ax = self.fig.add_subplot(111)
-        self.cid_scroll = self.fig.canvas.mpl_connect('scroll_event', self.mouse_wheel)
-        self.fig.canvas.manager.toolmanager.add_tool('Zoom', ModifiedZoom)
-        self.fig.canvas.manager.toolmanager.remove_tool('zoom')
-        self.fig.canvas.manager.toolbar.add_tool('Zoom', 'navigation', 1)
+    def frame_setup(self):
+        self.setup_left1_frame()
+        self.setup_left2_frame()
+        self.setup_right_frame()
 
-        self.plot()
+    def setup_left1_frame(self):
+        pad_x = 5
+        pad_y = 2
+        inter_x = 5
+        Label(self.left_frame1, text="Threshold").grid(sticky='W', row=0, column=0, padx=pad_x, pady=pad_y)
+        self.threshold = Entry(self.left_frame1)
+        self.threshold.insert(INSERT, 50)
+        self.threshold.grid(sticky='W', row=0, column=1, padx=pad_x, pady=pad_y)
+        Button(self.left_frame1, text='Plot Threshold', command=lambda: self.plot_threshold()). \
+            grid(sticky='EW', row=0, column=2, padx=pad_x, pady=pad_y, ipadx=inter_x)
 
-    def refresh(self, t=True, b=True):
-        table_height = len(self.output_table)
-        if table_height:
-            table_width = len(self.output_table[0])
-            for i in range(table_height):
-                for j in range(table_width):
-                    if hasattr(self.output_table[i][j], 'destroy'):
-                        self.output_table[i][j].destroy()
+        Label(self.left_frame1, text="Scale Bar (nm)").grid(sticky='W', row=1, column=0, padx=pad_x, pady=pad_y)
+        self.scale_bar.grid(sticky='W', row=1, column=1, padx=pad_x, pady=pad_y)
+        cvt = 'Convert ratio: '
+        Label(self.left_frame1, text=cvt).grid(sticky='W', row=2, column=0, padx=pad_x, pady=pad_y)
 
-        sw_table_height = len(self.sw_table)
-        if sw_table_height:
-            sw_table_width = len(self.sw_table[0])
-            for i in range(sw_table_height):
-                for j in range(sw_table_width):
-                    if hasattr(self.sw_table[i][j], 'destroy'):
-                        self.sw_table[i][j].destroy()
+        Button(self.left_frame1, text='Update', command=lambda: self.update_ratio_ui()). \
+            grid(sticky='EW', row=1, column=2, padx=pad_x, pady=pad_y, ipadx=inter_x)
 
-        if b:
-            labels = [LEFT, RIGHT, TOP, BOTTOM]
-            for label_item in labels:
-                self.boundary_ui[label_item].delete(0, 'end')
-            self.parameters.set_boundary_values(None, None, None, None)
-        if t:
-            self.parameters.threshold = 0
+        Checkbutton(self.left_frame1, text="lock", variable=self.var1). \
+            grid(sticky='NSEW', row=1, column=3, padx=pad_x, pady=pad_y)
 
-    def insert_ratio_ui(self):
-        if not self.var1.get():
-            self.scale_bar_ui.delete(0, 'end')
-            self.scale_bar_ui.insert(INSERT, self.temImage.scale_bar)
-        self.update_ratio_ui()
+        Checkbutton(self.left_frame1, text="draw", variable=self.var4). \
+            grid(sticky='NSEW', row=0, column=3, padx=pad_x, pady=pad_y)
+
+        Button(self.left_frame1, text='Clear', command=lambda: self.clear_draw()). \
+            grid(sticky='EW', row=0, column=4, padx=pad_x, pady=pad_y, ipadx=inter_x)
+
+    def setup_left2_frame(self):
+        pad_x = 5
+        pad_y = 2
+        inter_x = 5
+        Label(self.left_frame2, text="Field Region").grid(sticky='W', row=0, column=0, padx=pad_x - 2, pady=pad_y)
+        self.field.grid(sticky='W', row=0, column=1, padx=pad_x, pady=pad_y)
+        self.field.insert(INSERT, 0)
+
+        Label(self.left_frame2, text="Bottom Region").grid(sticky='W', row=0, column=2, padx=pad_x - 2, pady=pad_y)
+        self.bottom_cut.grid(sticky='W', row=0, column=3, padx=pad_x, pady=pad_y)
+        self.bottom_cut.insert(INSERT, 0)
+
+        Label(self.left_frame2, text="Discontinuity").grid(sticky='W', row=1, column=2, padx=pad_x - 2, pady=pad_y)
+        self.discontinuity.grid(sticky='W', row=1, column=3, padx=pad_x, pady=pad_y)
+        self.discontinuity.insert(INSERT, 0)
+
+        Label(self.left_frame2, text="Noise Level").grid(sticky='W', row=1, column=0, padx=pad_x - 2, pady=pad_y)
+        self.noise.grid(sticky='W', row=1, column=1, padx=pad_x, pady=pad_y)
+        self.noise.insert(INSERT, 2)
+
+        Button(self.left_frame2, text='Image Grid', command=lambda: self.plot_grid()). \
+            grid(sticky='EW', row=2, column=0, padx=pad_x, pady=pad_y, ipadx=inter_x - 1)
+
+        self.grid_parameter.grid(sticky='W', row=2, column=1, padx=pad_x, pady=pad_y)
+        self.grid_parameter.delete(0, 'end')
+        self.grid_parameter.insert(INSERT, 50)
+        Checkbutton(self.left_frame2, text="lock", variable=self.var3). \
+            grid(sticky='NSEW', row=2, column=2, padx=pad_x, pady=pad_y)
+
+    def setup_right_frame(self):
+        labels = [LEFT, RIGHT, TOP, BOTTOM]
+        pad_x = 5
+        pad_y = 5
+        inter_x = 5
+        i = 0
+        for label_item in labels:
+            Label(self.right_frame, text=label_item).grid(sticky='W', row=i, column=0, padx=pad_x)
+            display_entry = Entry(self.right_frame)
+            display_entry.grid(sticky='W', row=i, column=1, padx=pad_x)
+            self.boundary[label_item] = display_entry
+            i += 1
+
+        Label(self.right_frame, text='Angle').grid(sticky='W', row=4, column=0, padx=pad_x)
+
+        self.boundary_angle.insert(INSERT, 0)
+        self.boundary_angle.grid(sticky='W', row=4, column=1, padx=pad_x)
+
+        Button(self.right_frame, text='Get Boundary', command=lambda: self.get_boundary()) \
+            .grid(sticky='W', row=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
 
     def update_ratio_ui(self):
         pad_x = 5
         pad_y = 2
         if self.temImage.image_type == 'TEM':
-            self.update_ratio()
+            update_bar = int(self.scale_bar.get())
+            if not update_bar or update_bar < 0:
+                print("Invalid scale bar value")
+                return
+            self.temImage.update_ratio(update_bar)
         Label(self.left_frame1, text='Convert ratio: ').grid(sticky='W', row=2, column=0, padx=pad_x, pady=pad_y)
         Label(self.left_frame1, text=str('%.3f' % self.temImage.ratio)). \
             grid(sticky='W', row=2, column=1, padx=pad_x, pady=pad_y)
         return
 
-    def update_ratio(self):
-        update_bar = int(self.scale_bar_ui.get())
-        if not update_bar or update_bar < 0:
-            print("Invalid scale bar value")
+    def insert_ratio_ui(self):
+        if not self.var1.get():
+            self.scale_bar.delete(0, 'end')
+            self.scale_bar.insert(INSERT, self.temImage.scale_bar)
+        self.update_ratio_ui()
+
+    def get_boundary(self):
+        labels = [LEFT, RIGHT, TOP, BOTTOM]
+        boundary = [self.boundary[i].get() for i in labels]
+        angle = self.boundary_angle.get()
+        self.parameters.set_boundary_values(*boundary)
+        self.parameters.set_angle_value(angle)
+        self.plot(boundary_flag=True)
+        return
+
+    def grid_reset(self):
+        self.parameters.field_position = int(self.field.get())
+        self.parameters.bottom_cut = int(self.bottom_cut.get())
+        self.parameters.discontinuity = int(self.discontinuity.get())
+        self.parameters.noise_level = int(self.noise.get())
+
+    def plot_grid(self):
+        self.grid_reset()
+        self.parameters.grid_parameter = int(self.grid_parameter.get())
+        self.temImage.get_grid(self.parameters)
+        self.plot(grid_flag=True)
+        return
+
+    def plot_threshold(self):
+        if not self.threshold:
+            print("Invalid Threshold Entry")
             return
-        self.temImage.update_ratio(update_bar)
+
+        threshold = int(self.threshold.get())
+        if not threshold or threshold < 0:
+            print("Invalid threshold value")
+            return
+
+        self.parameters.set_threshold_value(threshold)
+        self.parameters.set_threshold_list(self.temImage.height, self.temImage.width, self.temImage.data)
+        if not self.var3.get():
+            self.grid_parameter.delete(0, 'end')
+            self.grid_parameter.insert(INSERT, self.threshold.get())
+        self.plot(threshold_flag=True, boundary_flag=True)
+        return
+
+    def clear_draw(self):
+        self.temImage.void_xs_list = []
+        self.temImage.void_ys_list = []
+        self.plot(threshold_flag=True, boundary_flag=True)
+
+    def ax_plot(self, **kwargs):
+        if 'grid_flag' in kwargs:
+            for i in self.temImage.grid_list:
+                self.ax.scatter(i[0], i[1], 1, color='blue')
+            plt.show()
+            return
+
+        if self.temImage.void_xs_list and self.temImage.void_ys_list:
+            for v in range(len(self.temImage.void_xs_list)):
+                xs, ys = line2scatter(self.temImage.void_xs_list[v], self.temImage.void_ys_list[v], div=5)
+                self.ax.scatter(xs, ys, 0.1, color='yellow')
+
+        if self.temImage.scale_x and self.temImage.scale_y:
+            self.ax.scatter(self.temImage.scale_x, self.temImage.scale_y, 0.2, color='red')
+
+        if self.parameters.threshold_list_x and self.parameters.threshold_list_y and ('threshold_flag' in kwargs):
+            self.scat = self.ax.scatter(self.parameters.threshold_list_y, self.parameters.threshold_list_x, 0.05, color='yellow')
+
+        if self.parameters.top and self.parameters.bottom and self.parameters.right and self.parameters.left \
+                and ('boundary_flag' in kwargs):
+            rect_x, rect_y = rect_boundary(self.parameters.top, self.parameters.left,
+                                           self.parameters.bottom, self.parameters.right, self.parameters.angle)
+            self.ax.scatter(rect_x, rect_y, 0.1, color='blue')
+        self.output_plot()
+
+    def output_plot(self):
+        return
+
+
+class InteractUI(FrameUI):
+    def __init__(self):
+        super().__init__()
+        self.xs = []
+        self.ys = []
+        self.draw_xs = []
+        self.draw_ys = []
+        self.left_flag = 0
+
+    def connect(self):
+        self.fig.canvas.mpl_connect('button_press_event', self.on_press)
+        self.fig.canvas.mpl_connect('button_release_event', self.on_release)
+        self.fig.canvas.mpl_connect('key_press_event', self.delete_press)
+        self.fig.canvas.mpl_connect('motion_notify_event', self.on_motion)
+        self.fig.canvas.mpl_connect('scroll_event', self.mouse_wheel)
 
     def on_press(self, event):
-
         if event.button == 1:
             if self.var4.get() == 1:
                 if self.temImage.void_xs_list and self.left_flag == 0:
@@ -971,7 +1149,7 @@ class UI:
                         xs, ys = line2scatter(self.temImage.void_xs_list[v], self.temImage.void_ys_list[v], div=5)
                         self.ax.scatter(xs, ys, 0.1, color='yellow')
                 self.left_flag = 1
-                if event.inaxes != self.line.axes:
+                if event.inaxes != self.ax.axes:
                     return
                 self.draw_xs.append(event.xdata)
                 self.draw_ys.append(event.ydata)
@@ -981,13 +1159,13 @@ class UI:
                 return
             else:
                 self.xs, self.ys = [], []
-                if event.inaxes != self.line.axes:
+                if event.inaxes != self.ax.axes:
                     return
                 self.xs.append(event.xdata)
                 self.ys.append(event.ydata)
         if event.button == 3:
             if self.var4.get() == 1 and self.left_flag == 1:
-                if event.inaxes != self.line.axes:
+                if event.inaxes != self.ax.axes:
                     return
                 self.draw_xs.append(self.draw_xs[0])
                 self.draw_ys.append(self.draw_ys[0])
@@ -1015,15 +1193,10 @@ class UI:
                 self.temImage.void_ys_list.pop()
         return
 
-    def clear_draw(self):
-        self.temImage.void_xs_list = []
-        self.temImage.void_ys_list = []
-        self.plot(threshold_flag=True, boundary_flag=True)
-
     def on_motion(self, event):
         if not self.xs:
             return
-        if event.inaxes != self.line.axes:
+        if event.inaxes != self.ax.axes:
             return
         x0, y0 = self.xs[0], self.ys[0]
         x1, y1 = event.xdata, event.ydata
@@ -1035,13 +1208,12 @@ class UI:
         self.line.figure.canvas.draw()
 
     def on_release(self, event):
-
         if self.var4.get() == 1:
             return
         else:
             if not self.xs:
                 return
-            if event.inaxes != self.line.axes:
+            if event.inaxes != self.ax.axes:
                 return
             self.xs.append(event.xdata)
             self.ys.append(event.ydata)
@@ -1055,18 +1227,33 @@ class UI:
     def bind_parameter(self):
         labels = [LEFT, RIGHT, TOP, BOTTOM]
         for label_item in labels:
-            self.boundary_ui[label_item].delete(0, 'end')
+            self.boundary[label_item].delete(0, 'end')
         self.parameters.set_boundary_values(None, None, None, None)
 
         boundary = ['%.1f' % self.xs[0], '%.1f' % self.xs[1], '%.1f' % self.ys[0], '%.1f' % self.ys[1]]
         self.parameters.set_boundary_values(*boundary)
         i = 0
         for label_item in labels:
-            self.boundary_ui[label_item].insert(INSERT, boundary[i])
+            self.boundary[label_item].insert(INSERT, boundary[i])
             i += 1
 
+    def mouse_wheel(self, event):
+        global connect_flag
+        if connect_flag:
+            count = int(self.threshold.get())
+            if event.button == 'up':
+                count -= 1
+            elif event.button == 'down':
+                count += 1
+
+            self.threshold.delete(0, 'end')
+            self.threshold.insert(INSERT, count)
+            self.threshold_scatter(region=False)
+        else:
+            return
+
     def threshold_scatter(self, region=True):
-        threshold = int(self.threshold_ui.get())
+        threshold = int(self.threshold.get())
         self.parameters.set_threshold_value(threshold)
         self.parameters.set_threshold_list(self.temImage.height, self.temImage.width, self.temImage.data, r=region)
         if self.scat:
@@ -1075,203 +1262,138 @@ class UI:
             self.scat = self.ax.scatter(self.parameters.threshold_list_y, self.parameters.threshold_list_x, 0.05,
                                         color='yellow')
 
-    def plot(self, threshold_flag=False, gray_flag=False, grid=False, boundary_flag=False):
-        plt.cla()
-        self.ax.imshow(self.temImage.image)
-        self.line, = self.ax.plot([0], [0], color='yellow')
 
-        self.draw_xs = []
-        self.draw_ys = []
+class UI(InteractUI):
+    def __init__(self):
+        super().__init__()
+        com_value = StringVar()
+        self.combo_list = ttk.Combobox(self.btm_frame, textvariable=com_value)
+        self.combo_list["values"] = ('Thickness', 'Void Percentage', 'WL Height', 'Sidewall', 'Field')
+        self.mean_thick_ui = Entry(self.btm_frame)
+        self.sd_thick_ui = Entry(self.btm_frame)
+        self.mean_void_ui = Entry(self.btm_frame)
+        self.sd_void_ui = Entry(self.btm_frame)
+        self.sw_thickness_ui = Entry(self.btm_frame)
+        self.sw_roughness_ui = Entry(self.btm_frame)
+        self.mean_wl_height_ui = Entry(self.btm_frame)
+        self.sd_wl_height_ui = Entry(self.btm_frame)
+        self.mean_mid_height_ui = Entry(self.btm_frame)
+        self.sd_mid_height_ui = Entry(self.btm_frame)
+        self.output_table = []
+        self.sw_table = []
+        self.setup_btm_frame()
 
-        self.cid_press = self.line.figure.canvas.mpl_connect('button_press_event', self.on_press)
-        self.cid_release = self.line.figure.canvas.mpl_connect('button_release_event', self.on_release)
-        self.cid_delete = self.line.figure.canvas.mpl_connect('key_press_event', self.delete_press)
-        self.cidmotion = self.line.figure.canvas.mpl_connect('motion_notify_event', self.on_motion)
+    def setup_btm_frame(self):
+        pad_x = 5
+        pad_y = 2
+        inter_x = 5
 
-        if grid:
-            for i in self.temImage.grid_list:
-                plt.scatter(i[0], i[1], 1, color='blue')
-            plt.show()
-            return
+        self.combo_list.current(0)
+        self.combo_list.bind("<<ComboboxSelected>>", self.drop_down)
+        self.combo_list.grid(sticky='EW', row=0, padx=pad_x, pady=pad_y, ipadx=inter_x)
 
-        if self.temImage.void_xs_list and self.temImage.void_ys_list:
-            for v in range(len(self.temImage.void_xs_list)):
-                xs, ys = line2scatter(self.temImage.void_xs_list[v], self.temImage.void_ys_list[v], div=5)
-                self.ax.scatter(xs, ys, 0.1, color='yellow')
+        Button(self.btm_frame, text='Calculate', command=lambda: self.get_thickness()). \
+            grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
+        Label(self.btm_frame, text='Thickness (nm):').grid(sticky='W', row=1, column=1, padx=pad_x)
+        self.mean_thick_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
+        Label(self.btm_frame, text='SD (nm):').grid(sticky='W', row=1, column=3, padx=pad_x)
+        self.sd_thick_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
 
-        if self.temImage.scale_x and self.temImage.scale_y:
-            self.ax.scatter(self.temImage.scale_x, self.temImage.scale_y, 0.2, color='red')
+        Button(self.btm_frame, text='Column Distribution'). \
+            grid(sticky='EW', row=0, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
+        Button(self.btm_frame, text='Row Distribution'). \
+            grid(sticky='EW', row=1, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
+        Button(self.btm_frame, text='Output'). \
+            grid(sticky='EW', row=2, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
 
-        if self.parameters.threshold_list_x and self.parameters.threshold_list_y and threshold_flag:
-            self.scat = self.ax.scatter(self.parameters.threshold_list_y, self.parameters.threshold_list_x, 0.05,
-                                        color='yellow')
+    def drop_down(self, *args):
+        pad_x = 5
+        pad_y = 2
+        inter_x = 5
 
-        if self.parameters.gray_threshold_list_x and self.parameters.gray_threshold_list_y and gray_flag:
-            self.ax.scatter(self.parameters.gray_threshold_list_y, self.parameters.gray_threshold_list_x, 0.2,
-                            color='red')
+        choice = self.combo_list.get()
+        for label in self.btm_frame.grid_slaves():
+            if int(label.grid_info()["row"]) > 0 and int(label.grid_info()['column'] < 5):
+                label.grid_forget()
 
-        if self.parameters.top and self.parameters.bottom and self.parameters.right and self.parameters.left and \
-                boundary_flag:
-            rect_x, rect_y = rect_boundary(self.parameters.top, self.parameters.left,
-                                           self.parameters.bottom, self.parameters.right, self.parameters.angle)
-            self.ax.scatter(rect_x, rect_y, 0.1, color='blue')
+        if choice == 'Thickness':
+            Button(self.btm_frame, text='Calculate', command=lambda: self.get_thickness()). \
+                grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
+            Label(self.btm_frame, text='Thickness (nm):').grid(sticky='W', row=1, column=1, padx=pad_x)
+            self.mean_thick_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
+            Label(self.btm_frame, text='SD (nm):').grid(sticky='W', row=1, column=3, padx=pad_x)
+            self.sd_thick_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
+        if choice == 'Void Percentage':
+            Button(self.btm_frame, text='Calculate', command=lambda: self.get_void()). \
+                grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
+            Label(self.btm_frame, text='Void Percentage:').grid(sticky='W', row=1, column=1, padx=pad_x)
+            self.mean_void_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
+            Label(self.btm_frame, text='SD:').grid(sticky='W', row=1, column=3, padx=pad_x)
+            self.sd_void_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
+        if choice == 'Sidewall' or choice == 'Field':
+            Button(self.btm_frame, text='Calculate', command=lambda: self.get_sidewall()). \
+                grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
+            Label(self.btm_frame, text='Thickness (nm):').grid(sticky='W', row=1, column=1, padx=pad_x)
+            self.sw_thickness_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
+            Label(self.btm_frame, text='Roughness (nm):').grid(sticky='W', row=1, column=3, padx=pad_x)
+            self.sw_roughness_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
+        if choice == 'WL Height':
+            Button(self.btm_frame, text='Calculate', command=lambda: self.get_wl_height()). \
+                grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
+            Label(self.btm_frame, text='WL Height (nm):').grid(sticky='W', row=1, column=1, padx=pad_x)
+            self.mean_wl_height_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
+            Label(self.btm_frame, text='SD (nm):').grid(sticky='W', row=1, column=3, padx=pad_x)
+            self.sd_wl_height_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
 
-        if self.parameters.is_ready():
-            if self.combo_list.get() == 'Thickness':
-                for SectionText in range(0, len(self.temImage.row_list)):
-                    self.ax.text(self.parameters.left, self.temImage.row_list[SectionText][0],
-                                 'Layer ' + str(SectionText + 1) + ': ' +
-                                 str('%.2f' % self.temImage.output.thickness.row[SectionText]) + ' nm', fontsize=7)
-
-            if self.combo_list.get() == 'Void Percentage':
-                for SectionText in range(0, len(self.temImage.row_list)):
-                    self.ax.text((self.parameters.left + self.parameters.right) * 0.5,
-                                 self.temImage.row_list[SectionText][0],
-                                 'Layer ' + str(SectionText + 1) + ': ' +
-                                 str('%.2f' % self.temImage.output.void.row[SectionText]), fontsize=7)
-
-            if self.combo_list.get() == 'Sidewall':
-                self.ax.scatter(*self.temImage.sd_position, 0.1, color='white')
-                for SectionText in range(0, len(self.temImage.output.sidewall.row)):
-                    self.ax.text(self.parameters.left, self.temImage.sw_row_list[SectionText][0],
-                                 'Layer ' + str(SectionText + 1) + ': ' +
-                                 str('%.2f' % self.temImage.output.sidewall.row[SectionText]) + ' nm', color='yellow',
-                                 fontsize=7)
-                    self.ax.text(self.parameters.left, self.temImage.sw_row_list[SectionText][0] + 40,
-                                 'R: ' + str('%.2f' % self.temImage.output.roughness.row[SectionText]) + ' nm',
-                                 color='yellow', fontsize=7)
-                self.ax.text(self.parameters.right + 5, (self.parameters.top + self.parameters.bottom) * 0.5,
-                             'Thickness:' + str('%.3f' % self.temImage.output.whole_sidewall) + ' nm',
-                             color='blue', fontsize=7)
-                self.ax.text(self.parameters.right + 5, (self.parameters.top + self.parameters.bottom) * 0.5 + 40,
-                             'Roughness: ' + str('%.3f' % self.temImage.output.whole_roughness) + ' nm',
-                             color='blue', fontsize=7)
-
-            if self.combo_list.get() == 'Field':
-                self.ax.text(self.parameters.right + 5, (self.parameters.top + self.parameters.bottom) * 0.5,
-                             'Thickness:' + str('%.3f' % self.temImage.output.whole_sidewall) + ' nm',
-                             color='blue', fontsize=7)
-                self.ax.text(self.parameters.right + 5, (self.parameters.top + self.parameters.bottom) * 0.5 + 40,
-                             'Roughness: ' + str('%.3f' % self.temImage.output.whole_roughness) + ' nm',
-                             color='blue', fontsize=7)
-
-            if self.combo_list.get() == 'WL Height':
-                for SectionText in range(0, len(self.temImage.row_list)):
-                    self.ax.text(self.parameters.left, self.temImage.row_list[SectionText][0],
-                                 'Layer ' + str(SectionText + 1) + ': ' +
-                                 str('%.2f' % self.temImage.output.wl_height.row[SectionText]) + ' nm', fontsize=7)
-                    self.ax.text(self.temImage.wl_mid_position, self.temImage.row_list[SectionText][0],
-                                 'Mid: ' + str('%.2f' % self.temImage.output.wl_mid.row[SectionText]) + ' nm',
-                                 color='blue', fontsize=7)
-                mid = self.temImage.wl_mid_position
-                x = [mid] * (self.parameters.bottom - self.parameters.top)
-                y = [i for i in range(self.parameters.top, self.parameters.bottom)]
-                self.ax.scatter(x, y, 0.1, color='white')
-
-        plt.show()
-
-    def grid_reset(self):
-        self.parameters.field_position = int(self.field_ui.get())
-        self.parameters.bottom_cut = int(self.bottom_cut_ui.get())
-        self.parameters.discontinuity = int(self.discontinuity_ui.get())
-        self.parameters.noise_level = int(self.noise_ui.get())
-
-    def grid_plot(self):
-        self.grid_reset()
-        self.parameters.grid_parameter = int(self.grid_parameter_ui.get())
-        self.temImage.get_grid(self.parameters)
-        self.plot(grid=True)
-        return
-
-    def plot_threshold(self):
-        if not self.threshold_ui:
-            print("Invalid Threshold Entry")
-            return
-
-        threshold = int(self.threshold_ui.get())
-        if not threshold or threshold < 0:
-            print("Invalid threshold value")
-            return
-
-        self.parameters.set_threshold_value(threshold)
-        self.parameters.set_threshold_list(self.temImage.height, self.temImage.width, self.temImage.data)
-        if not self.var3.get():
-            self.grid_parameter_ui.delete(0, 'end')
-            self.grid_parameter_ui.insert(INSERT, self.threshold_ui.get())
-
-        self.plot(threshold_flag=True, boundary_flag=True)
-        return
-
-    def plot_gray_threshold(self):
-        if not self.gray_threshold_ui:
-            print("Invalid Threshold Entry")
-            return
-
-        gray_threshold = int(self.gray_threshold_ui.get())
-
-        if not gray_threshold or gray_threshold < 0:
-            print("Invalid threshold value")
-            return
-
-        self.parameters.set_gray_threshold_value(gray_threshold)
-        self.parameters.set_gray_threshold_list(self.temImage.height, self.temImage.width, self.temImage.data)
-
-        self.plot(gray_flag=True)
-        return
-
-    def plot_bi_image(self):
-        image = Image.new('RGB', (self.temImage.width, self.temImage.height), (255, 255, 255))
-
-        draw = ImageDraw.Draw(image)
-        self.parameters.set_pixels(self.temImage.height, self.temImage.width, self.temImage.data)
-        for i in range(len(self.parameters.black_x)):
-            draw.point((self.parameters.black_x[i], self.parameters.black_y[i]), fill=(64, 64, 64))
-        for i in range(len(self.parameters.gray_x)):
-            draw.point((self.parameters.gray_x[i], self.parameters.gray_y[i]), fill=(0, 102, 204))
-
-        image.show()
-
-    def get_boundary(self):
-        self.refresh(t=False, b=False)
-
-        left = self.boundary_ui[LEFT].get()
-        right = self.boundary_ui[RIGHT].get()
-        top = self.boundary_ui[TOP].get()
-        bottom = self.boundary_ui[BOTTOM].get()
-        angle = self.boundary_angle_ui.get()
-        self.parameters.set_boundary_values(left, right, top, bottom)
-        self.parameters.set_angle_value(angle)
-        self.plot(boundary_flag=True)
-
-        return
+            Label(self.btm_frame, text='WL Height (Mid, nm):').grid(sticky='W', row=2, column=1, padx=pad_x)
+            self.mean_mid_height_ui.grid(sticky='W', row=2, column=2, padx=pad_x)
+            Label(self.btm_frame, text='SD (Mid, nm):').grid(sticky='W', row=2, column=3, padx=pad_x)
+            self.sd_mid_height_ui.grid(sticky='W', row=2, column=4, padx=pad_x)
 
     def state_check(self):
         self.grid_reset()
-        if self.parameters.threshold != int(self.threshold_ui.get()):
-            self.parameters.set_threshold_value(int(self.threshold_ui.get()))
+        if self.parameters.threshold != int(self.threshold.get()):
+            self.parameters.set_threshold_value(int(self.threshold.get()))
             self.parameters.set_threshold_list(self.temImage.height, self.temImage.width, self.temImage.data)
             if not self.var3.get():
-                self.grid_parameter_ui.delete(0, 'end')
-                self.grid_parameter_ui.insert(INSERT, self.threshold_ui.get())
-                self.parameters.grid_parameter = int(self.grid_parameter_ui.get())
+                self.grid_parameter.delete(0, 'end')
+                self.grid_parameter.insert(INSERT, self.threshold.get())
+                self.parameters.grid_parameter = int(self.grid_parameter.get())
                 self.temImage.get_grid(self.parameters)
 
         if not self.var3.get():
-            self.parameters.grid_parameter = int(self.grid_parameter_ui.get())
+            self.parameters.grid_parameter = int(self.grid_parameter.get())
             self.temImage.get_grid(self.parameters)
-            if self.grid_parameter_ui.get() != self.threshold_ui.get():
-                self.grid_parameter_ui.delete(0, 'end')
-                self.grid_parameter_ui.insert(INSERT, self.threshold_ui.get())
-                self.parameters.grid_parameter = int(self.grid_parameter_ui.get())
+            if self.grid_parameter.get() != self.threshold.get():
+                self.grid_parameter.delete(0, 'end')
+                self.grid_parameter.insert(INSERT, self.threshold.get())
+                self.parameters.grid_parameter = int(self.grid_parameter.get())
                 self.temImage.get_grid(self.parameters)
 
         if self.var3.get():
-            self.parameters.grid_parameter = int(self.grid_parameter_ui.get())
+            self.parameters.grid_parameter = int(self.grid_parameter.get())
             self.temImage.get_grid(self.parameters)
+
+    def refresh(self):
+        table_height = len(self.output_table)
+        if table_height:
+            table_width = len(self.output_table[0])
+            for i in range(table_height):
+                for j in range(table_width):
+                    if hasattr(self.output_table[i][j], 'destroy'):
+                        self.output_table[i][j].destroy()
+
+        sw_table_height = len(self.sw_table)
+        if sw_table_height:
+            sw_table_width = len(self.sw_table[0])
+            for i in range(sw_table_height):
+                for j in range(sw_table_width):
+                    if hasattr(self.sw_table[i][j], 'destroy'):
+                        self.sw_table[i][j].destroy()
 
     def get_thickness(self):
         self.state_check()
-        self.refresh(t=False, b=False)
+        self.refresh()
         if self.parameters.is_ready():
             self.temImage.calculate_thickness(self.parameters)
             self.thickness_output_ui()
@@ -1280,7 +1402,7 @@ class UI:
 
     def get_void(self):
         self.state_check()
-        self.refresh(t=False, b=False)
+        self.refresh()
         if self.parameters.is_ready():
             self.temImage.calculate_thickness(self.parameters, voids=True)
             self.void_output_ui()
@@ -1289,7 +1411,7 @@ class UI:
 
     def get_wl_height(self):
         self.state_check()
-        self.refresh(t=False, b=False)
+        self.refresh()
         if self.parameters.is_ready():
             self.temImage.calculate_thickness(self.parameters, wl_height=True)
             self.wl_height_ui()
@@ -1342,7 +1464,7 @@ class UI:
 
     def get_sidewall(self):
         self.state_check()
-        self.refresh(t=False, b=False)
+        self.refresh()
         if self.parameters.is_ready():
             self.temImage.calculate_sidewall(self.parameters, self.combo_list.get() == 'Field')
             self.sidewall_ui()
@@ -1394,9 +1516,9 @@ class UI:
             self.table_frame.grid(row=3, columnspan=3, sticky='EW', padx=5, pady=2)
             for i in range(height):
                 for j in range(width):
-                    self.output_table[i][j] = Entry(self.table_frame)
-                    self.output_table[i][j].place(x=j * 70, y=i * 20, width=70)
-                    self.output_table[i][j].insert(INSERT, b[i][j])
+                    entry = Entry(self.table_frame).place(x=j * 70, y=i * 20, width=70)
+                    entry.insert(INSERT, b[i][j])
+                    self.output_table[i][j] = entry
 
         elif s == 'Thickness' or s == 'Void%' or s == 'WL Height':
             column, row, matrix, average = self.temImage.output.table_content(s)
@@ -1432,19 +1554,21 @@ class UI:
             self.table_frame.grid(row=3, columnspan=3, sticky='EW', padx=5, pady=2)
             for i in range(height):
                 for j in range(width):
-                    self.output_table[i][j] = Entry(self.table_frame)
+                    entry = Entry(self.table_frame)
                     if j == 0:
-                        self.output_table[i][j].place(x=j * 70, y=i * 20, width=70)
+                        entry.place(x=j * 70, y=i * 20, width=70)
                     elif j == width - 1:
-                        self.output_table[i][j].place(x=120 + (j - 2) * 50, y=i * 20, width=70)
+                        entry.place(x=120 + (j - 2) * 50, y=i * 20, width=70)
                     else:
-                        self.output_table[i][j].place(x=70 + (j - 1) * 50, y=i * 20, width=50)
-                    self.output_table[i][j].insert(INSERT, b[i][j])
+                        entry.place(x=70 + (j - 1) * 50, y=i * 20, width=50)
+                    entry.insert(INSERT, b[i][j])
+                    self.output_table[i][j] = entry
             if s == 'WL Height':
                 for i in range(height):
-                    self.output_table[i][width + add_width - 1] = Entry(self.table_frame)
-                    self.output_table[i][width + add_width - 1].place(x=120 + width * 50, y=i * 20, width=50)
-                    self.output_table[i][width + add_width - 1].insert(INSERT, b[i][width + add_width - 1])
+                    entry = Entry(self.table_frame)
+                    entry.place(x=120 + width * 50, y=i * 20, width=50)
+                    entry.insert(INSERT, b[i][width + add_width - 1])
+                    self.output_table[i][width + add_width - 1] = entry
 
         Button(self.btm_frame, text='Output', command=lambda: self.out2csv(b, s)). \
             grid(sticky='EW', row=2, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
@@ -1516,206 +1640,61 @@ class UI:
         plt.ylim(y_min, y_max)
         plt.show()
 
-    def mouse_wheel(self, event):
-        global connect_flag
-        if connect_flag:
-            count = int(self.threshold_ui.get())
-            if event.button == 'up':
-                count -= 1
-            elif event.button == 'down':
-                count += 1
+    def output_plot(self):
+        if self.parameters.is_ready():
+            if self.combo_list.get() == 'Thickness':
+                for SectionText in range(0, len(self.temImage.row_list)):
+                    self.ax.text(self.parameters.left, self.temImage.row_list[SectionText][0],
+                                 'Layer ' + str(SectionText + 1) + ': ' +
+                                 str('%.2f' % self.temImage.output.thickness.row[SectionText]) + ' nm', fontsize=7)
 
-            self.threshold_ui.delete(0, 'end')
-            self.threshold_ui.insert(INSERT, count)
-            self.threshold_scatter(region=False)
+            if self.combo_list.get() == 'Void Percentage':
+                for SectionText in range(0, len(self.temImage.row_list)):
+                    self.ax.text((self.parameters.left + self.parameters.right) * 0.5,
+                                 self.temImage.row_list[SectionText][0],
+                                 'Layer ' + str(SectionText + 1) + ': ' +
+                                 str('%.2f' % self.temImage.output.void.row[SectionText]), fontsize=7)
 
-        else:
-            return
+            if self.combo_list.get() == 'Sidewall':
+                self.ax.scatter(*self.temImage.sd_position, 0.1, color='white')
+                for SectionText in range(0, len(self.temImage.output.sidewall.row)):
+                    self.ax.text(self.parameters.left, self.temImage.sw_row_list[SectionText][0],
+                                 'Layer ' + str(SectionText + 1) + ': ' +
+                                 str('%.2f' % self.temImage.output.sidewall.row[SectionText]) + ' nm', color='yellow',
+                                 fontsize=7)
+                    self.ax.text(self.parameters.left, self.temImage.sw_row_list[SectionText][0] + 40,
+                                 'R: ' + str('%.2f' % self.temImage.output.roughness.row[SectionText]) + ' nm',
+                                 color='yellow', fontsize=7)
+                self.ax.text(self.parameters.right + 5, (self.parameters.top + self.parameters.bottom) * 0.5,
+                             'Thickness:' + str('%.3f' % self.temImage.output.whole_sidewall) + ' nm',
+                             color='blue', fontsize=7)
+                self.ax.text(self.parameters.right + 5, (self.parameters.top + self.parameters.bottom) * 0.5 + 40,
+                             'Roughness: ' + str('%.3f' % self.temImage.output.whole_roughness) + ' nm',
+                             color='blue', fontsize=7)
 
-    def setup_left1_frame(self):
-        pad_x = 5
-        pad_y = 2
-        inter_x = 5
-        Label(self.left_frame1, text="Threshold").grid(sticky='W', row=0, column=0, padx=pad_x, pady=pad_y)
-        self.threshold_ui = Entry(self.left_frame1)
-        self.threshold_ui.insert(INSERT, 50)
-        self.threshold_ui.grid(sticky='W', row=0, column=1, padx=pad_x, pady=pad_y)
-        Button(self.left_frame1, text='Plot Threshold', command=lambda: self.plot_threshold()). \
-            grid(sticky='EW', row=0, column=2, padx=pad_x, pady=pad_y, ipadx=inter_x)
+            if self.combo_list.get() == 'Field':
+                self.ax.text(self.parameters.right + 5, (self.parameters.top + self.parameters.bottom) * 0.5,
+                             'Thickness:' + str('%.3f' % self.temImage.output.whole_sidewall) + ' nm',
+                             color='blue', fontsize=7)
+                self.ax.text(self.parameters.right + 5, (self.parameters.top + self.parameters.bottom) * 0.5 + 40,
+                             'Roughness: ' + str('%.3f' % self.temImage.output.whole_roughness) + ' nm',
+                             color='blue', fontsize=7)
 
-        Label(self.left_frame1, text="Scale Bar (nm)").grid(sticky='W', row=1, column=0, padx=pad_x, pady=pad_y)
-        self.scale_bar_ui = Entry(self.left_frame1)
-        self.scale_bar_ui.grid(sticky='W', row=1, column=1, padx=pad_x, pady=pad_y)
-        cvt = 'Convert ratio: '
-        Label(self.left_frame1, text=cvt).grid(sticky='W', row=2, column=0, padx=pad_x, pady=pad_y)
-
-        Button(self.left_frame1, text='Update', command=lambda: self.update_ratio_ui()). \
-            grid(sticky='EW', row=1, column=2, padx=pad_x, pady=pad_y, ipadx=inter_x)
-
-        Checkbutton(self.left_frame1, text="lock", variable=self.var1). \
-            grid(sticky='NSEW', row=1, column=3, padx=pad_x, pady=pad_y)
-
-        Checkbutton(self.left_frame1, text="draw", variable=self.var4). \
-            grid(sticky='NSEW', row=0, column=3, padx=pad_x, pady=pad_y)
-
-        Button(self.left_frame1, text='Clear', command=lambda: self.clear_draw()). \
-            grid(sticky='EW', row=0, column=4, padx=pad_x, pady=pad_y, ipadx=inter_x)
-
-    def setup_left2_frame(self):
-        pad_x = 5
-        pad_y = 2
-        inter_x = 5
-        Label(self.left_frame2, text="Field Region").grid(sticky='W', row=0, column=0, padx=pad_x - 2, pady=pad_y)
-        self.field_ui = Entry(self.left_frame2)
-        self.field_ui.grid(sticky='W', row=0, column=1, padx=pad_x, pady=pad_y)
-        self.field_ui.insert(INSERT, 0)
-
-        Label(self.left_frame2, text="Bottom Region").grid(sticky='W', row=0, column=2, padx=pad_x - 2, pady=pad_y)
-        self.bottom_cut_ui = Entry(self.left_frame2)
-        self.bottom_cut_ui.grid(sticky='W', row=0, column=3, padx=pad_x, pady=pad_y)
-        self.bottom_cut_ui.insert(INSERT, 0)
-
-        Label(self.left_frame2, text="Discontinuity").grid(sticky='W', row=1, column=2, padx=pad_x - 2, pady=pad_y)
-        self.discontinuity_ui = Entry(self.left_frame2)
-        self.discontinuity_ui.grid(sticky='W', row=1, column=3, padx=pad_x, pady=pad_y)
-        self.discontinuity_ui.insert(INSERT, 0)
-
-        Label(self.left_frame2, text="Noise Level").grid(sticky='W', row=1, column=0, padx=pad_x - 2, pady=pad_y)
-        self.noise_ui = Entry(self.left_frame2)
-        self.noise_ui.grid(sticky='W', row=1, column=1, padx=pad_x, pady=pad_y)
-        self.noise_ui.insert(INSERT, 2)
-
-        # Label(self.left_frame2, text="Gray Threshold").grid(sticky='W', row=0, column=0, padx=pad_x - 2, pady=pad_y)
-        # self.gray_threshold_ui = Entry(self.left_frame2)
-        # self.gray_threshold_ui.insert(INSERT, 125)
-        # self.gray_threshold_ui.grid(sticky='W', row=0, column=1, padx=pad_x, pady=pad_y)
-        # Button(self.left_frame2, text='Plot Threshold', command=lambda: self.plot_gray_threshold()). \
-        #    grid(sticky='EW', row=0, column=2, padx=pad_x, pady=pad_y, ipadx=inter_x)
-
-        # Button(self.left_frame2, text='Bi-Image', command=lambda: self.plot_bi_image()). \
-        #    grid(sticky='EW', row=0, column=3, padx=pad_x, pady=pad_y, ipadx=inter_x + 7)
-        Button(self.left_frame2, text='Image Grid', command=lambda: self.grid_plot()). \
-            grid(sticky='EW', row=2, column=0, padx=pad_x, pady=pad_y, ipadx=inter_x - 1)
-
-        self.grid_parameter_ui.grid(sticky='W', row=2, column=1, padx=pad_x, pady=pad_y)
-        self.grid_parameter_ui.delete(0, 'end')
-        self.grid_parameter_ui.insert(INSERT, 50)
-        Checkbutton(self.left_frame2, text="lock", variable=self.var3). \
-            grid(sticky='NSEW', row=2, column=2, padx=pad_x, pady=pad_y)
-
-    def setup_right_frame(self):
-        labels = [LEFT, RIGHT, TOP, BOTTOM]
-        pad_x = 5
-        pad_y = 5
-        inter_x = 5
-        i = 0
-        for label_item in labels:
-            Label(self.right_frame, text=label_item).grid(sticky='W', row=i, column=0, padx=pad_x)
-            display_entry = Entry(self.right_frame)
-            display_entry.grid(sticky='W', row=i, column=1, padx=pad_x)
-            self.boundary_ui[label_item] = display_entry
-            i += 1
-
-        Label(self.right_frame, text='Angle').grid(sticky='W', row=4, column=0, padx=pad_x)
-
-        self.boundary_angle_ui.insert(INSERT, 0)
-        self.boundary_angle_ui.grid(sticky='W', row=4, column=1, padx=pad_x)
-
-        Button(self.right_frame, text='Get Boundary', command=lambda: self.get_boundary()) \
-            .grid(sticky='W', row=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
-
-    def drop_down(self, *args):
-        pad_x = 5
-        pad_y = 2
-        inter_x = 5
-
-        choice = self.combo_list.get()
-        for label in self.btm_frame.grid_slaves():
-            if int(label.grid_info()["row"]) > 0 and int(label.grid_info()['column'] < 5):
-                label.grid_forget()
-
-        if choice == 'Thickness':
-            Button(self.btm_frame, text='Calculate', command=lambda: self.get_thickness()). \
-                grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
-            Label(self.btm_frame, text='Thickness (nm):').grid(sticky='W', row=1, column=1, padx=pad_x)
-            self.mean_thick_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
-            Label(self.btm_frame, text='SD (nm):').grid(sticky='W', row=1, column=3, padx=pad_x)
-            self.sd_thick_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
-        if choice == 'Void Percentage':
-            Button(self.btm_frame, text='Calculate', command=lambda: self.get_void()). \
-                grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
-            Label(self.btm_frame, text='Void Percentage:').grid(sticky='W', row=1, column=1, padx=pad_x)
-            self.mean_void_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
-            Label(self.btm_frame, text='SD:').grid(sticky='W', row=1, column=3, padx=pad_x)
-            self.sd_void_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
-        if choice == 'Sidewall' or choice == 'Field':
-            Button(self.btm_frame, text='Calculate', command=lambda: self.get_sidewall()). \
-                grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
-            Label(self.btm_frame, text='Thickness (nm):').grid(sticky='W', row=1, column=1, padx=pad_x)
-            self.sw_thickness_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
-            Label(self.btm_frame, text='Roughness (nm):').grid(sticky='W', row=1, column=3, padx=pad_x)
-            self.sw_roughness_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
-        if choice == 'WL Height':
-            Button(self.btm_frame, text='Calculate', command=lambda: self.get_wl_height()). \
-                grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
-            Label(self.btm_frame, text='WL Height (nm):').grid(sticky='W', row=1, column=1, padx=pad_x)
-            self.mean_wl_height_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
-            Label(self.btm_frame, text='SD (nm):').grid(sticky='W', row=1, column=3, padx=pad_x)
-            self.sd_wl_height_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
-
-            Label(self.btm_frame, text='WL Height (Mid, nm):').grid(sticky='W', row=2, column=1, padx=pad_x)
-            self.mean_mid_height_ui.grid(sticky='W', row=2, column=2, padx=pad_x)
-            Label(self.btm_frame, text='SD (Mid, nm):').grid(sticky='W', row=2, column=3, padx=pad_x)
-            self.sd_mid_height_ui.grid(sticky='W', row=2, column=4, padx=pad_x)
-
-    def setup_btm_frame(self):
-        pad_x = 5
-        pad_y = 2
-        inter_x = 5
-
-        self.combo_list.current(0)
-        self.combo_list.bind("<<ComboboxSelected>>", self.drop_down)
-        self.combo_list.grid(sticky='EW', row=0, padx=pad_x, pady=pad_y, ipadx=inter_x)
-
-        Button(self.btm_frame, text='Calculate', command=lambda: self.get_thickness()). \
-            grid(sticky='EW', row=1, padx=pad_x, pady=pad_y, ipadx=inter_x)
-        Label(self.btm_frame, text='Thickness (nm):').grid(sticky='W', row=1, column=1, padx=pad_x)
-        self.mean_thick_ui.grid(sticky='W', row=1, column=2, padx=pad_x)
-        Label(self.btm_frame, text='SD (nm):').grid(sticky='W', row=1, column=3, padx=pad_x)
-        self.sd_thick_ui.grid(sticky='W', row=1, column=4, padx=pad_x)
-
-        Button(self.btm_frame, text='Column Distribution'). \
-            grid(sticky='EW', row=0, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
-        Button(self.btm_frame, text='Row Distribution'). \
-            grid(sticky='EW', row=1, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
-        Button(self.btm_frame, text='Output'). \
-            grid(sticky='EW', row=2, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
-
-    def construct_ui(self):
-        self.root.geometry('840x450+50+50')
-        self.root.title("Image Analysis")
-
-        menu_bar = Menu(self.root)
-        file_menu = Menu(menu_bar, tearoff=0)
-        file_menu.add_command(label="Open", command=self.open_file_ui)
-        file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.root.quit)
-        menu_bar.add_cascade(label="File", menu=file_menu)
-        self.root.config(menu=menu_bar)
-
-        self.left_frame1.grid(row=0, column=0, sticky='EW', padx=5, pady=2)
-        self.left_frame2.grid(row=1, column=0, sticky='EW', padx=5, pady=2)
-        self.right_frame.grid(row=0, column=1, rowspan=2, sticky='NSEW', padx=5, pady=2)
-        self.btm_frame.grid(row=2, columnspan=2, sticky='EW', padx=5, pady=2)
-
-        self.setup_left1_frame()
-        self.setup_left2_frame()
-        self.setup_right_frame()
-        self.setup_btm_frame()
-
-        self.root.mainloop()
+            if self.combo_list.get() == 'WL Height':
+                for SectionText in range(0, len(self.temImage.row_list)):
+                    self.ax.text(self.parameters.left, self.temImage.row_list[SectionText][0],
+                                 'Layer ' + str(SectionText + 1) + ': ' +
+                                 str('%.2f' % self.temImage.output.wl_height.row[SectionText]) + ' nm', fontsize=7)
+                    self.ax.text(self.temImage.wl_mid_position, self.temImage.row_list[SectionText][0],
+                                 'Mid: ' + str('%.2f' % self.temImage.output.wl_mid.row[SectionText]) + ' nm',
+                                 color='blue', fontsize=7)
+                mid = self.temImage.wl_mid_position
+                x = [mid] * (self.parameters.bottom - self.parameters.top)
+                y = [i for i in range(self.parameters.top, self.parameters.bottom)]
+                self.ax.scatter(x, y, 0.1, color='white')
 
 
 connect_flag = False
 my_ui = UI()
 my_ui.construct_ui()
+

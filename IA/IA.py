@@ -407,9 +407,8 @@ class Parameters:
 
     def image_grid(self, height, width, data):
 
-        grid_const_1 = self.bottom_cut
-        grid_const_2 = 10
-        grid_const_3 = 15
+        self.grid_width_constant = 4
+        self.grid_height_constant = 4
 
         im_v_grid = []
         im_h_grid = []
@@ -417,19 +416,19 @@ class Parameters:
 
         for i in range(width):
             vertical_list = [data[i + width * j] for j in range(height)]
-            if not self.all_white(vertical_list, self.field_position, len(vertical_list) - grid_const_1,
+            if not self.all_white(vertical_list, self.field_position, len(vertical_list) - self.bottom_cut,
                                   direction=0) and v_grid[0] == -1:
                 v_grid[0] = i
                 v_grid[1] = 1
-            if self.all_white(vertical_list, self.field_position, len(vertical_list) - grid_const_1, direction=0) and \
+            if self.all_white(vertical_list, self.field_position, len(vertical_list) - self.bottom_cut, direction=0) and \
                     v_grid[1] == 1:
                 v_grid[1] = i
-                if v_grid[1] - v_grid[0] > grid_const_2:
+                if v_grid[1] - v_grid[0] > self.grid_width_constant:
                     im_v_grid.append(v_grid)
                 v_grid = [-1, -1]
             if i == width - 1 and v_grid[1] == 1:
                 v_grid[1] = i
-                if v_grid[1] - v_grid[0] > grid_const_2:
+                if v_grid[1] - v_grid[0] > self.grid_width_constant:
                     im_v_grid.append(v_grid)
                 v_grid = [-1, -1]
         self.v_grid = im_v_grid
@@ -438,7 +437,7 @@ class Parameters:
         n = 0
         for k in im_v_grid:
             im_h_grid[n] = []
-            im_h_grid[n] = self.get_grid((k[0], k[1]), width, height, data, grid_const_3)
+            im_h_grid[n] = self.get_grid((k[0], k[1]), width, height, data)
             if len(im_h_grid[n]) <= self.noise_level:
                 im_h_grid[n] = self.special_grid(k, width, height, data)
             n += 1
@@ -453,7 +452,7 @@ class Parameters:
 
         self.get_grid_line(height)
 
-    def get_grid(self, region, width, height, data, grid_const):
+    def get_grid(self, region, width, height, data):
         grids = [-1, -1]
         im_grid = []
         for j in range(height):
@@ -463,7 +462,7 @@ class Parameters:
                 grids[1] = 1
             if self.all_white(row, 0, len(row)) and grids[1] == 1:
                 grids[1] = j
-                if grids[1] - grids[0] > grid_const:
+                if grids[1] - grids[0] > self.grid_height_constant:
                     im_grid.append(grids)
 
                     if len(im_grid) > 1:
@@ -476,7 +475,7 @@ class Parameters:
                 grids = [-1, -1]
             if j == height - 1 and grids[1] == 1:
                 grids[1] = j
-                if grids[1] - grids[0] > grid_const:
+                if grids[1] - grids[0] > self.grid_height_constant:
                     im_grid.append(grids)
                 grids = [-1, -1]
         return im_grid
@@ -520,8 +519,7 @@ class Parameters:
             return False
 
     def grid(self, width, height, region, data):
-        grid_const_3 = 15
-        return self.get_grid(region, width, height, data, grid_const_3)
+        return self.get_grid(region, width, height, data)
 
     def get_grid_line(self, height):
         self.grid_line_list = []
@@ -615,8 +613,8 @@ class TEMImage:
         y = 0
         length = 0
         index = ()
-        for j in range(self.height - 100, self.height):
-            line = [self.data[j * self.width + i][0] for i in range(400)]
+        for j in range(self.height - 200, self.height):
+            line = [self.data[j * self.width + i][0] for i in range(600)]
             length, index = find_white(line)
             if length > 50:
                 y = j
@@ -674,7 +672,7 @@ class TEMImage:
             else:
                 l = position
                 self.sd_position = (
-                [int(round(l + (i - t) * math.tan(a))) for i in range(t, b)], [i for i in range(t, b)])
+                    [int(round(l + (i - t) * math.tan(a))) for i in range(t, b)], [i for i in range(t, b)])
 
             for i in range(t, b):
                 black = 0
@@ -866,6 +864,7 @@ class BaseUI:
                                     height=self.btm_height)
         self.table_frame = LabelFrame(self.root, text='Data', bd=0, width=self.table_width,
                                       height=self.table_height)
+        self.var2 = IntVar()
         # self.fig = matplotlib.figure.Figure()
 
     def connect(self):
@@ -885,8 +884,18 @@ class BaseUI:
         self.fig.canvas.manager.toolbar.add_tool('Zoom', 'navigation', 1)
         self.connect()
         self.refresh()
-        
+
         self.plot()
+
+    def test_mode_ui(self):
+        win = Toplevel()
+        win.wm_title("Setup")
+        win.geometry('400x200+150+150')
+
+        Checkbutton(win, text="Test Mode", variable=self.var2).grid(row=0, column=0)
+
+        b = ttk.Button(win, text="Apply", command=win.destroy)
+        b.grid(row=1, column=0)
 
     def plot(self, **kwargs):
         plt.cla()
@@ -905,6 +914,9 @@ class BaseUI:
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.root.quit)
         menu_bar.add_cascade(label="File", menu=file_menu)
+        setup_menu = Menu(menu_bar, tearoff=0)
+        setup_menu.add_command(label='Test Mode', command=self.test_mode_ui)
+        menu_bar.add_cascade(label='Setup', menu=setup_menu)
         self.root.config(menu=menu_bar)
 
         self.left_frame1.grid(row=0, column=0, sticky='EW', padx=5, pady=2)
@@ -1112,14 +1124,16 @@ class FrameUI(BaseUI):
             self.ax.scatter(self.temImage.scale_x, self.temImage.scale_y, 0.2, color='red')
 
         if self.parameters.threshold_list_x and self.parameters.threshold_list_y and ('threshold_flag' in kwargs):
-            self.scat = self.ax.scatter(self.parameters.threshold_list_y, self.parameters.threshold_list_x, 0.05, color='yellow')
+            self.scat = self.ax.scatter(self.parameters.threshold_list_y, self.parameters.threshold_list_x, 0.05,
+                                        color='yellow')
 
         if self.parameters.top and self.parameters.bottom and self.parameters.right and self.parameters.left \
                 and ('boundary_flag' in kwargs):
             rect_x, rect_y = rect_boundary(self.parameters.top, self.parameters.left,
                                            self.parameters.bottom, self.parameters.right, self.parameters.angle)
             self.ax.scatter(rect_x, rect_y, 0.1, color='blue')
-        self.output_plot()
+        if 'output' in kwargs:
+            self.output_plot()
 
     def output_plot(self):
         return
@@ -1397,7 +1411,7 @@ class UI(InteractUI):
         if self.parameters.is_ready():
             self.temImage.calculate_thickness(self.parameters)
             self.thickness_output_ui()
-        self.plot(threshold_flag=True, boundary_flag=True)
+        self.plot(threshold_flag=True, boundary_flag=True, output=True)
         return
 
     def get_void(self):
@@ -1406,7 +1420,7 @@ class UI(InteractUI):
         if self.parameters.is_ready():
             self.temImage.calculate_thickness(self.parameters, voids=True)
             self.void_output_ui()
-        self.plot(threshold_flag=True, boundary_flag=True)
+        self.plot(threshold_flag=True, boundary_flag=True, output=True)
         return
 
     def get_wl_height(self):
@@ -1415,7 +1429,7 @@ class UI(InteractUI):
         if self.parameters.is_ready():
             self.temImage.calculate_thickness(self.parameters, wl_height=True)
             self.wl_height_ui()
-        self.plot(threshold_flag=True, boundary_flag=True)
+        self.plot(threshold_flag=True, boundary_flag=True, output=True)
         return
 
     def thickness_output_ui(self):
@@ -1457,7 +1471,7 @@ class UI(InteractUI):
         self.table_ui('WL Height')
 
         Button(self.btm_frame, text='Column Distribution',
-               command=lambda: self.distribution('Column', wl_height=True)).\
+               command=lambda: self.distribution('Column', wl_height=True)). \
             grid(sticky='EW', row=0, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
         Button(self.btm_frame, text='Row Distribution', command=lambda: self.distribution('Row', wl_height=True)). \
             grid(sticky='EW', row=1, column=5, padx=pad_x, pady=pad_y, ipadx=inter_x)
@@ -1465,10 +1479,13 @@ class UI(InteractUI):
     def get_sidewall(self):
         self.state_check()
         self.refresh()
+        if self.var2.get() == 1:
+            self.function_test()
+            return
         if self.parameters.is_ready():
             self.temImage.calculate_sidewall(self.parameters, self.combo_list.get() == 'Field')
             self.sidewall_ui()
-        self.plot(threshold_flag=True, boundary_flag=True)
+        self.plot(threshold_flag=True, boundary_flag=True, output=True)
         return
 
     def sidewall_ui(self):
@@ -1516,7 +1533,8 @@ class UI(InteractUI):
             self.table_frame.grid(row=3, columnspan=3, sticky='EW', padx=5, pady=2)
             for i in range(height):
                 for j in range(width):
-                    entry = Entry(self.table_frame).place(x=j * 70, y=i * 20, width=70)
+                    entry = Entry(self.table_frame)
+                    entry.place(x=j * 70, y=i * 20, width=70)
                     entry.insert(INSERT, b[i][j])
                     self.output_table[i][j] = entry
 
@@ -1578,7 +1596,8 @@ class UI(InteractUI):
         summary = []
         label = [[], [self.temImage.filename], ['%s Analysis' % name], []]
         if name == 'Thickness':
-            summary = [['Thickness', 'SD'], [self.temImage.output.thickness.mean, self.temImage.output.thickness.sd], []]
+            summary = [['Thickness', 'SD'], [self.temImage.output.thickness.mean, self.temImage.output.thickness.sd],
+                       []]
         if name == 'Void%':
             summary = [['Void Percentage', 'SD'], [self.temImage.output.void.mean, self.temImage.output.void.sd], []]
         if name == 'Sidewall':
@@ -1586,7 +1605,8 @@ class UI(InteractUI):
                        [self.temImage.output.whole_sidewall, self.temImage.output.whole_roughness], []]
         if name == 'WL Height':
             summary = [['Height', 'SD'], [self.temImage.output.wl_height.mean, self.temImage.output.wl_height.sd],
-                       ['Height (Mid)', 'SD (Mid)'], [self.temImage.output.wl_mid.mean, self.temImage.output.wl_mid.sd], []]
+                       ['Height (Mid)', 'SD (Mid)'], [self.temImage.output.wl_mid.mean, self.temImage.output.wl_mid.sd],
+                       []]
 
         threshold = [['Threshold', self.parameters.threshold], ['Grid Parameter', self.parameters.grid_parameter]]
         analysis_region = [['Left', self.parameters.left], ['Right', self.parameters.right],
@@ -1692,6 +1712,22 @@ class UI(InteractUI):
                 x = [mid] * (self.parameters.bottom - self.parameters.top)
                 y = [i for i in range(self.parameters.top, self.parameters.bottom)]
                 self.ax.scatter(x, y, 0.1, color='white')
+
+    def function_test(self):
+        data = self.temImage.data
+        width = self.temImage.width
+        thick_list = []
+        left, right, top, bottom = self.parameters.left, self.parameters.right, self.parameters.top, self.parameters.bottom
+        for j in range(top, bottom):
+            black = 0
+            for i in range(left, right):
+                if data[i+j*width][0] < self.parameters.threshold:
+                    black += 1
+            thick_list.append(black*self.temImage.ratio)
+        self.sw_thickness_ui.delete(0, 'end')
+        self.sw_roughness_ui.delete(0, 'end')
+        self.sw_thickness_ui.insert(INSERT, 'N/A')
+        self.sw_roughness_ui.insert(INSERT, str('%.3f' % statistics.stdev(thick_list)))
 
 
 connect_flag = False
